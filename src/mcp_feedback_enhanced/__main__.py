@@ -264,9 +264,8 @@ def show_version():
     """顯示版本資訊"""
     from . import __author__, __version__
 
-    print(f"MCP Feedback Enhanced Enhanced v{__version__}")
-    print(f"作者: {__author__}")
-    print("GitHub: https://github.com/Minidoracat/mcp-feedback-enhanced")
+    print(f"Leo Feedback MCP v{__version__}")
+    print(f"Author: {__author__}")
 
 
 if __name__ == "__main__":

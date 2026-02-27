@@ -304,13 +304,20 @@ class WebUIManager:
 
     def _setup_static_files(self):
         """設置靜態文件服務 - Flutter Web only"""
-        flutter_build_path = Path(__file__).parent.parent.parent.parent / "frontend" / "build" / "web"
-        if flutter_build_path.exists():
-            self.flutter_build_path = flutter_build_path
-            debug_log(f"Flutter Web build found: {flutter_build_path}")
+        # Try development path first (running from source)
+        dev_path = Path(__file__).parent.parent.parent.parent / "frontend" / "build" / "web"
+        # Then try installed package path
+        pkg_path = Path(__file__).parent.parent / "flutter_web"
+
+        if dev_path.exists():
+            self.flutter_build_path = dev_path
+            debug_log(f"Flutter Web build found (dev): {dev_path}")
+        elif pkg_path.exists():
+            self.flutter_build_path = pkg_path
+            debug_log(f"Flutter Web build found (package): {pkg_path}")
         else:
             self.flutter_build_path = None
-            debug_log(f"Flutter Web build not found at: {flutter_build_path}")
+            debug_log(f"Flutter Web build not found. Searched: {dev_path}, {pkg_path}")
 
     def create_session(self, project_directory: str, summary: str) -> str:
         """創建新的回饋會話 - 重構為單一活躍會話模式，保留標籤頁狀態"""

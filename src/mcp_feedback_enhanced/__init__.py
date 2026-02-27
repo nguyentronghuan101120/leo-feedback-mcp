@@ -18,8 +18,7 @@ MCP Interactive Feedback Enhanced
 """
 
 __version__ = "2.6.0"
-__author__ = "Minidoracat"
-__email__ = "minidora0702@gmail.com"
+__author__ = "Leo Nguyen"
 
 import os
 

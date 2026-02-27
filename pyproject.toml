@@ -1,13 +1,13 @@
 [project]
-name = "mcp-feedback-enhanced"
+name = "leo-feedback-mcp"
 version = "2.6.0"
-description = "Enhanced MCP server for interactive user feedback and command execution in AI-assisted development, featuring dual interface support (Web UI and Desktop Application) with intelligent environment detection and cross-platform compatibility."
+description = "Interactive MCP feedback server with Flutter Web UI for AI-assisted development. Collect user feedback, images, and manage sessions in real-time."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-    { name = "Minidoracat", email = "minidora0702@gmail.com" }
+    { name = "Leo Nguyen" }
 ]
-keywords = ["mcp", "ai", "feedback", "web-ui", "desktop-app", "interactive", "development", "cross-platform", "tauri", "dual-interface"]
+keywords = ["mcp", "ai", "feedback", "web-ui", "flutter", "interactive", "development", "cursor"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -30,9 +30,7 @@ dependencies = [
     "psutil>=7.0.0",
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
-    "jinja2>=3.1.0",
     "websockets>=13.0.0",
-    "aiohttp>=3.8.0",
     "mcp>=1.9.3",
 ]
 
@@ -42,28 +40,22 @@ dev = [
     "pytest-asyncio>=0.21.0",
 ]
 
-[project.urls]
-Homepage = "https://github.com/Minidoracat/mcp-feedback-enhanced"
-Repository = "https://github.com/Minidoracat/mcp-feedback-enhanced"
-Issues = "https://github.com/Minidoracat/mcp-feedback-enhanced/issues"
-
 [project.scripts]
+leo-feedback-mcp = "mcp_feedback_enhanced.__main__:main"
 mcp-feedback-enhanced = "mcp_feedback_enhanced.__main__:main"
-interactive-feedback-mcp = "mcp_feedback_enhanced.__main__:main"
 
 [build-system]
-requires = [
-    "hatchling",
-    "maturin>=1.8.7",
-    "setuptools-rust>=1.11.1"
-]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcp_feedback_enhanced"]
 
-# 桌面應用程式二進制檔案現在直接存儲在 Git 中
-# 由 build-desktop.yml 工作流程自動構建並提交
+[tool.hatch.build.targets.wheel.force-include]
+"frontend/build/web" = "mcp_feedback_enhanced/flutter_web"
+
+[tool.hatch.build.targets.sdist.force-include]
+"frontend/build/web" = "frontend/build/web"
 
 [tool.uv]
 dev-dependencies = [
@@ -75,8 +67,6 @@ dev-dependencies = [
     "ruff>=0.11.0",
     "mypy>=1.16.0",
     "pre-commit>=4.0.0",
-    "maturin>=1.8.7",
-    "setuptools-rust>=1.11.1",
     "pillow>=11.2.1",
 ]
 
@@ -300,7 +290,6 @@ module = [
     "psutil.*",
     "uvicorn.*",
     "websockets.*",
-    "aiohttp.*",
     "fastapi.*",
     "pydantic.*",
     "pytest.*",
