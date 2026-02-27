@@ -470,7 +470,9 @@ body {
     background: var(--bg-primary);
     color: var(--text-primary);
     line-height: 1.6;
-    min-height: 100vh;
+    height: 100vh;
+    margin: 0;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
 }
@@ -482,9 +484,12 @@ body {
     padding: 12px;
     background: var(--bg-primary);
     color: var(--text-primary);
-    min-height: 100vh;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
+    box-sizing: border-box;
 }
 
 /* 頭部樣式 */
@@ -1124,12 +1129,16 @@ body {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    min-height: 0; /* 移除固定高度，使用 flex 自適應 */
+    min-height: 0;
 }
 
 .tab-content.active {
     display: flex;
     flex-direction: column;
+}
+
+#tab-combined.tab-content.active {
+    overflow: hidden;
 }
 
 /* 分割器樣式（用於合併模式） */
@@ -1462,6 +1471,73 @@ h3.combined-section-title {
 .feedback-title-container h3.combined-section-title {
     margin: 0;
     flex: 1;
+}
+
+/* Resize handle between panels */
+.resize-handle {
+    flex-shrink: 0;
+    background: var(--border-color);
+    border-radius: 4px;
+    transition: background 0.2s ease;
+    position: relative;
+    z-index: 10;
+}
+
+.resize-handle:hover,
+.resize-handle.active {
+    background: var(--accent-color);
+}
+
+.resize-handle::after {
+    content: '';
+    position: absolute;
+    border-radius: 2px;
+    background: var(--text-secondary);
+    opacity: 0.4;
+    transition: opacity 0.2s ease;
+}
+
+.resize-handle:hover::after,
+.resize-handle.active::after {
+    opacity: 0.8;
+}
+
+body.layout-combined-horizontal .resize-handle {
+    width: 5px;
+    cursor: col-resize;
+    margin: 0 2px;
+}
+
+body.layout-combined-horizontal .resize-handle::after {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 1px;
+    height: 40px;
+}
+
+body.layout-combined-vertical .resize-handle {
+    height: 5px;
+    cursor: row-resize;
+    margin: 2px 0;
+}
+
+body.layout-combined-vertical .resize-handle::after {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 1px;
+}
+
+body.resizing {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+
+body.resizing-vertical {
+    cursor: row-resize !important;
+    user-select: none !important;
 }
 
 .feedback-title-container .combined-submit-btn {

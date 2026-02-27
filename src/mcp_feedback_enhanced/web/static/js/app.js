@@ -748,7 +748,7 @@
         // 停止自動提交計時器（如果正在運行）
         if (this.autoSubmitManager && this.autoSubmitManager.isEnabled) {
             console.log('⏸️ 反饋已成功提交，停止自動提交倒數計時器');
-            this.autoSubmitManager.stop();
+            this.autoSubmitManager.fullStop();
         }
 
         // 顯示成功訊息
@@ -1196,7 +1196,7 @@
             // 停止自動提交計時器（如果正在運行）
             if (this.autoSubmitManager && this.autoSubmitManager.isEnabled) {
                 console.log('⏸️ 手動提交反饋，停止自動提交倒數計時器');
-                this.autoSubmitManager.stop();
+                this.autoSubmitManager.fullStop();
             }
             
             // 停止會話超時計時器
@@ -1746,23 +1746,21 @@
 
                 // 啟動自動提交
                 start: function(timeoutSeconds, promptId) {
-                    this.stop(); // 先停止現有的倒數計時
-
+                    if (this.countdown) {
+                        this.countdown.stop();
+                        this.countdown = null;
+                    }
                     this.isEnabled = true;
                     this.currentPromptId = promptId;
 
-                    // 顯示倒數計時器
                     self.showCountdownDisplay();
 
-                    // 創建倒數計時器
                     this.countdown = window.MCPFeedback.Utils.Time.createAutoSubmitCountdown(
                         timeoutSeconds,
                         function(remainingTime, isCompleted) {
-                            // 更新倒數計時顯示
                             self.updateCountdownDisplay(remainingTime);
                         },
                         function() {
-                            // 時間到，自動提交
                             self.performAutoSubmit();
                         }
                     );
@@ -1781,10 +1779,24 @@
                     this.isEnabled = false;
                     this.currentPromptId = null;
 
-                    // 隱藏倒數計時器
                     self.hideCountdownDisplay();
 
                     console.log('⏸️ 自動提交倒數計時已停止');
+                },
+
+                // 完全停止並清除記錄
+                fullStop: function() {
+                    if (this.countdown) {
+                        this.countdown.reset();
+                        this.countdown = null;
+                    }
+
+                    this.isEnabled = false;
+                    this.currentPromptId = null;
+
+                    self.hideCountdownDisplay();
+
+                    console.log('⏸️ 自動提交倒數計時已完全停止');
                 },
 
                 // 暫停倒數計時
@@ -1927,7 +1939,7 @@
             }
         } else {
             // 停止自動提交
-            this.autoSubmitManager.stop();
+            this.autoSubmitManager.fullStop();
             this.updateAutoSubmitStatus('disabled');
             console.log('⏸️ 自動提交已停用（設定變更觸發）');
         }
@@ -1941,7 +1953,7 @@
 
         if (!this.autoSubmitManager || !this.promptManager || !this.settingsManager) {
             console.error('❌ 自動提交管理器、提示詞管理器或設定管理器未初始化');
-            this.autoSubmitManager && this.autoSubmitManager.stop();
+            this.autoSubmitManager && this.autoSubmitManager.fullStop();
             return;
         }
 
@@ -1992,7 +2004,7 @@
         this.promptManager.usePrompt(promptId);
 
         // 停止自動提交
-        this.autoSubmitManager.stop();
+        this.autoSubmitManager.fullStop();
     };
 
     /**
@@ -2003,7 +2015,7 @@
 
         // 停止倒數計時器
         if (this.autoSubmitManager) {
-            this.autoSubmitManager.stop();
+            this.autoSubmitManager.fullStop();
         }
 
         // 清空自動提交設定
@@ -2175,7 +2187,7 @@
         console.log('🧹 清理應用程式資源...');
 
         if (this.autoSubmitManager) {
-            this.autoSubmitManager.stop();
+            this.autoSubmitManager.fullStop();
         }
 
         if (this.tabManager) {

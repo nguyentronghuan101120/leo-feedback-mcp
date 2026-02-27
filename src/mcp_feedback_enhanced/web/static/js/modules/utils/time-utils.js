@@ -272,15 +272,53 @@
         createAutoSubmitCountdown: function(timeoutSeconds, onTick, onComplete, options) {
             options = options || {};
             const interval = options.interval || 1000;
+            var STORAGE_KEY = 'mcp-autosubmit-start';
 
-            let remainingTime = timeoutSeconds;
+            var savedStart = null;
+            try {
+                var raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    var parsed = JSON.parse(raw);
+                    if (parsed && parsed.timeout === timeoutSeconds) {
+                        savedStart = parsed.startTime;
+                    }
+                }
+            } catch(e) {}
+
+            var elapsed = savedStart ? Math.floor((Date.now() - savedStart) / 1000) : 0;
+            let remainingTime = Math.max(0, timeoutSeconds - elapsed);
             let timer = null;
             let isPaused = false;
             let isCompleted = false;
 
+            function saveStartTime() {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                        startTime: savedStart || Date.now(),
+                        timeout: timeoutSeconds
+                    }));
+                } catch(e) {}
+            }
+
+            function clearStartTime() {
+                try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+            }
+
             const countdownManager = {
                 start: function() {
                     if (timer || isCompleted) return;
+
+                    if (!savedStart) {
+                        savedStart = Date.now();
+                    }
+                    saveStartTime();
+
+                    if (remainingTime <= 0) {
+                        isCompleted = true;
+                        clearStartTime();
+                        if (onComplete) onComplete();
+                        return this;
+                    }
 
                     timer = setInterval(function() {
                         if (isPaused || isCompleted) return;
@@ -295,6 +333,7 @@
                             isCompleted = true;
                             clearInterval(timer);
                             timer = null;
+                            clearStartTime();
 
                             if (onComplete) {
                                 onComplete();
@@ -302,7 +341,6 @@
                         }
                     }, interval);
 
-                    // 立即觸發第一次 tick
                     if (onTick) {
                         onTick(remainingTime, false);
                     }
@@ -332,8 +370,10 @@
                 reset: function(newTimeoutSeconds) {
                     this.stop();
                     remainingTime = newTimeoutSeconds || timeoutSeconds;
+                    savedStart = null;
                     isPaused = false;
                     isCompleted = false;
+                    clearStartTime();
                     return this;
                 },
 

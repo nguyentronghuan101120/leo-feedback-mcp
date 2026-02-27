@@ -6,7 +6,7 @@
     },
     "mcp-feedback-enhanced": {
       "command": "uv",
-      "args": ["run", "--directory", "/Users/sotatek/Desktop/leo-feedback-mcp", "mcp-feedback-enhanced"],
+      "args": ["run", "--directory", "/Users/leonguyen/Desktop/leo-feedback-mcp", "mcp-feedback-enhanced"],
       "timeout": 600,
       "autoApprove": ["interactive_feedback"]
     }

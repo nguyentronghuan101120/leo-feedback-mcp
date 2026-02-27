@@ -71,25 +71,25 @@
         #tab-combined.active.combined-horizontal .combined-content {
             display: flex !important;
             flex-direction: row !important;
-            gap: 16px;
+            gap: 0;
             height: 100%;
             overflow: hidden;
         }
 
         #tab-combined.active.combined-horizontal .combined-section:first-child {
-            flex: 1 !important;
-            min-width: 300px;
-            max-width: 50%;
+            flex: 1;
+            min-width: 200px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
         }
 
         #tab-combined.active.combined-horizontal .combined-section:last-child {
-            flex: 1 !important;
-            min-width: 400px;
-            overflow-y: auto; /* 回饋區域自身可滾動（內容過多時） */
-            flex-shrink: 0;
+            flex: 1;
+            min-width: 200px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
         }
 
         #tab-combined.active.combined-horizontal .combined-summary {
@@ -97,12 +97,14 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            min-height: 0;
         }
 
         #tab-combined.active.combined-horizontal #combinedSummaryContent {
             flex: 1;
-            min-height: 200px;
-            overflow-y: auto; /* AI 摘要區域獨立滾動 */
+            min-height: 0 !important;
+            max-height: 100%;
+            overflow-y: auto !important;
             overflow-x: hidden;
         }
 
@@ -509,7 +511,7 @@
             <!-- ===== AI 摘要分頁 ===== -->
             <div id="tab-summary" class="tab-content">
                 <div class="input-group">
-                    <div id="summaryContent" class="text-input" style="min-height: 300px; cursor: text; padding: 12px; line-height: 1.6; word-wrap: break-word; overflow-wrap: break-word;" data-dynamic-content="aiSummary">
+                    <div id="summaryContent" class="text-input" style="cursor: text; padding: 12px; line-height: 1.6; word-wrap: break-word; overflow-wrap: break-word; overflow-y: auto;" data-dynamic-content="aiSummary">
                         {{ summary }}
                     </div>
                 </div>
@@ -609,12 +611,15 @@
                     <!-- AI 摘要區域 -->
                     <div class="combined-section">
                         <div class="section-header">
-                            <h3 class="combined-section-title" data-i18n="combined.summaryTitle">📋 AI 工作摘要</h3>
+                            <h3 class="combined-section-title" data-i18n="combined.summaryTitle">📋 AI Work Summary</h3>
                         </div>
                         <div class="combined-summary">
-                            <div id="combinedSummaryContent" class="text-input" style="min-height: 200px; cursor: text; padding: 12px; line-height: 1.6; word-wrap: break-word; overflow-wrap: break-word;" data-dynamic-content="aiSummary">{{ summary }}</div>
+                            <div id="combinedSummaryContent" class="text-input" style="cursor: text; padding: 12px; line-height: 1.6; word-wrap: break-word; overflow-wrap: break-word; overflow-y: auto;" data-dynamic-content="aiSummary">{{ summary }}</div>
                         </div>
                     </div>
+
+                    <!-- 拖拽分隔線 -->
+                    <div class="resize-handle" id="resizeHandle"></div>
 
                     <!-- 回饋輸入區域 -->
                     <div class="combined-section">
@@ -1175,8 +1180,6 @@
 
     </div>
 
-    <script id="initial-summary-data" type="application/json">{{ summary | tojson }}</script>
-
     <!-- WebSocket 和 JavaScript -->
     <!-- Markdown 支援庫 - 本地版本 -->
     <script src="/static/js/vendor/marked.min.js"></script>
@@ -1290,19 +1293,16 @@
                     window.MCPFeedback.app = window.feedbackApp;
                 }
 
-                // Render initial summary from JSON data to preserve newlines
+                // 初始化完成後，立即渲染現有的 AI 摘要內容為 Markdown
                 setTimeout(function() {
                     if (window.feedbackApp && window.feedbackApp.uiManager) {
-                        var dataEl = document.getElementById('initial-summary-data');
-                        if (dataEl) {
-                            try {
-                                var rawSummary = JSON.parse(dataEl.textContent);
-                                if (rawSummary && rawSummary.trim()) {
-                                    window.feedbackApp.uiManager.updateAISummaryContent(rawSummary);
-                                }
-                            } catch (e) {
-                                console.warn('Failed to parse initial summary JSON:', e);
-                            }
+                        // 獲取當前的摘要內容
+                        const summaryElement = document.querySelector('#combinedSummaryContent');
+                        const summaryTabElement = document.querySelector('#summaryContent');
+
+                        if (summaryElement && summaryElement.textContent) {
+                            console.log('🔧 初始化時渲染 Markdown 內容...');
+                            window.feedbackApp.uiManager.updateAISummaryContent(summaryElement.textContent);
                         }
                     }
                 }, 100);
@@ -1368,6 +1368,125 @@
             const panel = document.getElementById('statsPanel');
             panel.classList.toggle('collapsed');
         }
+    </script>
+
+    <script>
+    (function() {
+        var STORAGE_KEY = 'mcp-resize-ratio';
+        var handle = document.getElementById('resizeHandle');
+        if (!handle) return;
+
+        var container = handle.parentElement;
+        var isDragging = false;
+        var startPos = 0;
+        var startSizes = [0, 0];
+        var sections = [];
+        var isHorizontal = true;
+
+        function getSections() {
+            return container.querySelectorAll('.combined-section');
+        }
+
+        function saveRatio() {
+            var s = getSections();
+            if (s.length < 2) return;
+            isHorizontal = document.body.classList.contains('layout-combined-horizontal');
+            var total = isHorizontal
+                ? (s[0].offsetWidth + s[1].offsetWidth)
+                : (s[0].offsetHeight + s[1].offsetHeight);
+            if (total <= 0) return;
+            var ratio = isHorizontal
+                ? s[0].offsetWidth / total
+                : s[0].offsetHeight / total;
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    ratio: ratio,
+                    mode: isHorizontal ? 'horizontal' : 'vertical'
+                }));
+            } catch(e) {}
+        }
+
+        function restoreRatio() {
+            try {
+                var data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+                if (!data || !data.ratio) return;
+                var s = getSections();
+                if (s.length < 2) return;
+                var h = document.body.classList.contains('layout-combined-horizontal');
+                if ((h && data.mode !== 'horizontal') || (!h && data.mode !== 'vertical')) return;
+
+                var ratio = Math.max(0.1, Math.min(0.9, data.ratio));
+                if (h) {
+                    var totalW = container.offsetWidth - handle.offsetWidth;
+                    s[0].style.flex = 'none';
+                    s[0].style.width = Math.round(totalW * ratio) + 'px';
+                    s[1].style.flex = 'none';
+                    s[1].style.width = Math.round(totalW * (1 - ratio)) + 'px';
+                } else {
+                    var totalH = container.offsetHeight - handle.offsetHeight;
+                    s[0].style.flex = 'none';
+                    s[0].style.height = Math.round(totalH * ratio) + 'px';
+                    s[1].style.flex = 'none';
+                    s[1].style.height = Math.round(totalH * (1 - ratio)) + 'px';
+                }
+            } catch(e) {}
+        }
+
+        setTimeout(restoreRatio, 200);
+
+        handle.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            isDragging = true;
+            handle.classList.add('active');
+
+            sections = getSections();
+            if (sections.length < 2) return;
+
+            isHorizontal = document.body.classList.contains('layout-combined-horizontal');
+
+            if (isHorizontal) {
+                startPos = e.clientX;
+                startSizes = [sections[0].offsetWidth, sections[1].offsetWidth];
+                document.body.classList.add('resizing');
+            } else {
+                startPos = e.clientY;
+                startSizes = [sections[0].offsetHeight, sections[1].offsetHeight];
+                document.body.classList.add('resizing-vertical');
+            }
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+
+            var delta = isHorizontal ? (e.clientX - startPos) : (e.clientY - startPos);
+            var newSize0 = startSizes[0] + delta;
+            var newSize1 = startSizes[1] - delta;
+            var minSize = 200;
+
+            if (newSize0 < minSize || newSize1 < minSize) return;
+
+            if (isHorizontal) {
+                sections[0].style.flex = 'none';
+                sections[0].style.width = newSize0 + 'px';
+                sections[1].style.flex = 'none';
+                sections[1].style.width = newSize1 + 'px';
+            } else {
+                sections[0].style.flex = 'none';
+                sections[0].style.height = newSize0 + 'px';
+                sections[1].style.flex = 'none';
+                sections[1].style.height = newSize1 + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (!isDragging) return;
+            isDragging = false;
+            handle.classList.remove('active');
+            document.body.classList.remove('resizing', 'resizing-vertical');
+            saveRatio();
+        });
+    })();
     </script>
 </body>
 </html>

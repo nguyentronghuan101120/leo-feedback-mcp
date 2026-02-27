@@ -74,6 +74,9 @@ test-func: ## Run functional tests (standard)
 test-web: ## Run Web UI tests (continuous)
 	uvx --no-cache --with-editable . mcp-feedback-enhanced test --web
 
+test-ui: ## Quick test Web UI locally (opens browser)
+	uv run mcp-feedback-enhanced test --web
+
 # 維護相關命令
 clean: ## Clean up cache and temporary files
 	@echo "Cleaning up..."

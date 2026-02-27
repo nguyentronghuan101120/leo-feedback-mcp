@@ -452,91 +452,32 @@
     };
 
     /**
-     * 更新 AI 摘要內容（追加模式：新 response 追加到舊 response 後面）
+     * 更新 AI 摘要內容
      */
     UIManager.prototype.updateAISummaryContent = function(summary) {
         console.log('📝 更新 AI 摘要內容...', '內容長度:', summary ? summary.length : 'undefined');
+        console.log('📝 marked 可用:', typeof window.marked !== 'undefined');
+        console.log('📝 DOMPurify 可用:', typeof window.DOMPurify !== 'undefined');
 
-        if (!summary || !summary.trim()) {
-            return;
+        // 渲染 Markdown 內容
+        const renderedContent = this.renderMarkdownSafely(summary);
+        console.log('📝 渲染後內容長度:', renderedContent ? renderedContent.length : 'undefined');
+
+        const summaryContent = Utils.safeQuerySelector('#summaryContent');
+        if (summaryContent) {
+            summaryContent.innerHTML = renderedContent;
+            console.log('✅ 已更新分頁模式摘要內容（Markdown 渲染）');
+        } else {
+            console.warn('⚠️ 找不到 #summaryContent 元素');
         }
 
-        var renderedContent = this.renderMarkdownSafely(summary);
-
-        var targets = [
-            Utils.safeQuerySelector('#summaryContent'),
-            Utils.safeQuerySelector('#combinedSummaryContent')
-        ];
-
-        var self = this;
-        targets.forEach(function(el) {
-            if (!el) return;
-            self._appendSummaryBlock(el, renderedContent, summary);
-        });
-    };
-
-    /**
-     * 追加摘要區塊到容器（避免重複內容）
-     */
-    UIManager.prototype._appendSummaryBlock = function(container, renderedHtml, rawSummary) {
-        if (!this._summaryResponseCounter) {
-            this._summaryResponseCounter = 0;
+        const combinedSummaryContent = Utils.safeQuerySelector('#combinedSummaryContent');
+        if (combinedSummaryContent) {
+            combinedSummaryContent.innerHTML = renderedContent;
+            console.log('✅ 已更新合併模式摘要內容（Markdown 渲染）');
+        } else {
+            console.warn('⚠️ 找不到 #combinedSummaryContent 元素');
         }
-
-        var normalizedNew = rawSummary.trim();
-
-        // 檢查是否與最後一個 response 相同（避免重複追加）
-        if (this._lastSummaryContent && this._lastSummaryContent === normalizedNew) {
-            return;
-        }
-
-        var isFirstResponse = !container.querySelector('.ai-response-block');
-
-        // 如果是第一個 response，清空初始的模板內容
-        if (isFirstResponse) {
-            container.innerHTML = '';
-        }
-
-        this._summaryResponseCounter++;
-        this._lastSummaryContent = normalizedNew;
-
-        // 將舊的 response 標記為歷史
-        var existingBlocks = container.querySelectorAll('.ai-response-block.latest');
-        for (var i = 0; i < existingBlocks.length; i++) {
-            existingBlocks[i].classList.remove('latest');
-            existingBlocks[i].classList.add('history');
-        }
-
-        // 建立新的 response 區塊
-        var block = document.createElement('div');
-        block.className = 'ai-response-block latest';
-        block.setAttribute('data-response-index', this._summaryResponseCounter);
-
-        var now = new Date();
-        var timeStr = now.toLocaleTimeString();
-
-        // 分隔線（非第一個 response 才顯示）
-        if (!isFirstResponse) {
-            var divider = document.createElement('div');
-            divider.className = 'ai-response-divider';
-            divider.innerHTML = '<span class="divider-line"></span>'
-                + '<span class="divider-label">Response #' + this._summaryResponseCounter + ' · ' + timeStr + '</span>'
-                + '<span class="divider-line"></span>';
-            block.appendChild(divider);
-        }
-
-        // 內容區域
-        var content = document.createElement('div');
-        content.className = 'ai-response-content';
-        content.innerHTML = renderedHtml;
-        block.appendChild(content);
-
-        container.appendChild(block);
-
-        // 自動滾動到最新 response
-        container.scrollTop = container.scrollHeight;
-
-        console.log('✅ 已追加 Response #' + this._summaryResponseCounter);
     };
 
     /**
