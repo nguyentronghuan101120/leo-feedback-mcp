@@ -20,8 +20,6 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-
 from ..debug import web_debug_log as debug_log
 from ..utils.error_handler import ErrorHandler, ErrorType
 from ..utils.memory_monitor import get_memory_monitor
@@ -149,9 +147,8 @@ class WebUIManager:
         # 基本組件初始化（必須同步）
         # 移除 i18n 管理器，因為翻譯已移至前端
 
-        # 設置靜態文件和模板（必須同步）
+        # 設置靜態文件（必須同步）
         self._setup_static_files()
-        self._setup_templates()
 
         # 設置路由（必須同步）
         setup_routes(self)
@@ -306,24 +303,14 @@ class WebUIManager:
             debug_log(f"設置 Web UI 內存監控失敗 [錯誤ID: {error_id}]: {e}")
 
     def _setup_static_files(self):
-        """設置靜態文件服務"""
-        # Web UI 靜態文件
-        web_static_path = Path(__file__).parent / "static"
-        if web_static_path.exists():
-            self.app.mount(
-                "/static", StaticFiles(directory=str(web_static_path)), name="static"
-            )
+        """設置靜態文件服務 - Flutter Web only"""
+        flutter_build_path = Path(__file__).parent.parent.parent.parent / "frontend" / "build" / "web"
+        if flutter_build_path.exists():
+            self.flutter_build_path = flutter_build_path
+            debug_log(f"Flutter Web build found: {flutter_build_path}")
         else:
-            raise RuntimeError(f"Static files directory not found: {web_static_path}")
-
-    def _setup_templates(self):
-        """設置模板引擎"""
-        # Web UI 模板
-        web_templates_path = Path(__file__).parent / "templates"
-        if web_templates_path.exists():
-            self.templates = Jinja2Templates(directory=str(web_templates_path))
-        else:
-            raise RuntimeError(f"Templates directory not found: {web_templates_path}")
+            self.flutter_build_path = None
+            debug_log(f"Flutter Web build not found at: {flutter_build_path}")
 
     def create_session(self, project_directory: str, summary: str) -> str:
         """創建新的回饋會話 - 重構為單一活躍會話模式，保留標籤頁狀態"""

@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from ... import __version__
 from ...debug import web_debug_log as debug_log
@@ -23,99 +24,37 @@ if TYPE_CHECKING:
     from ..main import WebUIManager
 
 
-def load_user_layout_settings() -> str:
-    """載入用戶的佈局模式設定"""
-    try:
-        # 使用統一的設定檔案路徑
-        config_dir = Path.home() / ".config" / "mcp-feedback-enhanced"
-        settings_file = config_dir / "ui_settings.json"
-
-        if settings_file.exists():
-            with open(settings_file, encoding="utf-8") as f:
-                settings = json.load(f)
-                layout_mode = settings.get("layoutMode", "combined-vertical")
-                debug_log(f"從設定檔案載入佈局模式: {layout_mode}")
-                # 修復 no-any-return 錯誤 - 確保返回 str 類型
-                return str(layout_mode)
-        else:
-            debug_log("設定檔案不存在，使用預設佈局模式: combined-vertical")
-            return "combined-vertical"
-    except Exception as e:
-        debug_log(f"載入佈局設定失敗: {e}，使用預設佈局模式: combined-vertical")
-        return "combined-vertical"
-
-
-# 使用統一的訊息代碼系統
-# 從 ..constants 導入的 get_msg_code 函數會處理所有訊息代碼
-# 舊的 key 會自動映射到新的常量
-
-
 def setup_routes(manager: "WebUIManager"):
     """設置路由"""
 
-    @manager.app.get("/", response_class=HTMLResponse)
-    async def index(request: Request):
-        """統一回饋頁面 - 重構後的主頁面"""
-        # 獲取當前活躍會話
+    @manager.app.get("/api/initial-data")
+    async def get_initial_data():
+        """Provide initial session data for Flutter UI"""
         current_session = manager.get_current_session()
-
         if not current_session:
-            # 沒有活躍會話時顯示等待頁面
-            return manager.templates.TemplateResponse(
-                "index.html",
-                {
-                    "request": request,
-                    "title": "Leo Feedback MCP",
-                    "has_session": False,
-                    "version": __version__,
-                },
-            )
-
-        # 有活躍會話時顯示回饋頁面
-        # 載入用戶的佈局模式設定
-        layout_mode = load_user_layout_settings()
-
-        return manager.templates.TemplateResponse(
-            "feedback.html",
-            {
-                "request": request,
-                "project_directory": current_session.project_directory,
-                "summary": current_session.summary,
-                "title": "Leo Feedback MCP",
+            return JSONResponse({
+                "has_session": False,
                 "version": __version__,
-                "has_session": True,
-                "layout_mode": layout_mode,
-            },
+            })
+        return JSONResponse({
+            "has_session": True,
+            "version": __version__,
+            "project_directory": current_session.project_directory,
+            "summary": current_session.summary,
+            "session_id": current_session.session_id,
+        })
+
+    @manager.app.get("/")
+    async def index(request: Request):
+        """Serve Flutter Web UI"""
+        flutter_path = getattr(manager, "flutter_build_path", None)
+        if flutter_path and (flutter_path / "index.html").exists():
+            return FileResponse(str(flutter_path / "index.html"))
+
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Flutter Web UI not built. Run: cd frontend && flutter build web --release"},
         )
-
-    @manager.app.get("/api/translations")
-    async def get_translations():
-        """獲取翻譯數據 - 從 Web 專用翻譯檔案載入"""
-        translations = {}
-
-        # 獲取 Web 翻譯檔案目錄
-        web_locales_dir = Path(__file__).parent.parent / "locales"
-        supported_languages = ["en"]
-
-        for lang_code in supported_languages:
-            lang_dir = web_locales_dir / lang_code
-            translation_file = lang_dir / "translation.json"
-
-            try:
-                if translation_file.exists():
-                    with open(translation_file, encoding="utf-8") as f:
-                        lang_data = json.load(f)
-                        translations[lang_code] = lang_data
-                        debug_log(f"成功載入 Web 翻譯: {lang_code}")
-                else:
-                    debug_log(f"Web 翻譯檔案不存在: {translation_file}")
-                    translations[lang_code] = {}
-            except Exception as e:
-                debug_log(f"載入 Web 翻譯檔案失敗 {lang_code}: {e}")
-                translations[lang_code] = {}
-
-        debug_log(f"Web 翻譯 API 返回 {len(translations)} 種語言的數據")
-        return JSONResponse(content=translations)
 
     @manager.app.get("/api/session-status")
     async def get_session_status(request: Request):
@@ -609,6 +548,13 @@ def setup_routes(manager: "WebUIManager"):
                     "messageCode": get_msg_code("set_failed"),
                 },
             )
+
+    # Mount Flutter static files LAST so API routes take priority
+    flutter_path = getattr(manager, "flutter_build_path", None)
+    if flutter_path and flutter_path.exists():
+        manager.app.mount(
+            "/", StaticFiles(directory=str(flutter_path)), name="flutter_ui"
+        )
 
 
 async def handle_websocket_message(manager: "WebUIManager", session, data: dict):

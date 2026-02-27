@@ -9,6 +9,12 @@
       "args": ["run", "--directory", "/Users/leonguyen/Desktop/leo-feedback-mcp", "mcp-feedback-enhanced"],
       "timeout": 600,
       "autoApprove": ["interactive_feedback"]
+    },
+    "dart": {
+      "type": "stdio",
+      "command": "dart mcp-server --experimental-mcp-server --force-roots-fallback",
+      "env": {},
+      "args": []
     }
   }
 }

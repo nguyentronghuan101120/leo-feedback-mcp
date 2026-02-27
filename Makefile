@@ -1,7 +1,7 @@
 # Makefile for leo-feedback-mcp development
 # Compatible with Windows PowerShell and Unix systems
 
-.PHONY: help install install-dev lint format type-check test clean update-deps build test-func test-web
+.PHONY: help install install-dev lint format type-check test clean update-deps build build-flutter test-func test-web
 
 help: ## Show this help message
 	@echo "Available commands:"
@@ -24,7 +24,8 @@ help: ## Show this help message
 	@echo "  clean                Clean up cache and temporary files"
 	@echo "  ps-clean             PowerShell version of clean (Windows)"
 	@echo "  update-deps          Update dependencies"
-	@echo "  build                Build the package"
+	@echo "  build                Build Flutter Web UI + Python package"
+	@echo "  build-flutter        Build Flutter Web UI only"
 	@echo "  build-check          Check the built package"
 	@echo "  ci                   Simulate CI pipeline locally"
 	@echo "  quick-check          Quick check with auto-fix"
@@ -96,8 +97,13 @@ update-deps: ## Update dependencies
 	uv sync --upgrade
 
 # 建置相關命令
-build: ## Build the package
+build: build-flutter ## Build Flutter Web UI + Python package
 	uv build
+
+build-flutter: ## Build Flutter Web UI
+	@echo "Building Flutter Web UI..."
+	cd frontend && flutter build web --release
+	@echo "Flutter Web UI built successfully!"
 
 build-check: ## Check the built package
 	uv run twine check dist/*

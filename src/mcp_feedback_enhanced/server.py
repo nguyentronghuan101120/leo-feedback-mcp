@@ -433,7 +433,7 @@ async def interactive_feedback(
         str, Field(description="AI 工作完成的摘要說明")
     ] = "我已完成了您請求的任務。",
     timeout: Annotated[int, Field(description="等待用戶回饋的超時時間（秒）")] = 600,
-) -> list:
+):
     """Interactive feedback collection tool for LLM agents.
 
     USAGE RULES:
