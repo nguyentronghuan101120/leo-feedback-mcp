@@ -130,7 +130,10 @@ class FeedbackPanelState extends State<FeedbackPanel> {
   void didUpdateWidget(FeedbackPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!widget.feedbackSubmitted && oldWidget.feedbackSubmitted) {
-      clearFeedback();
+      setState(() {
+        _hasSubmitted = false;
+        _isSubmitting = false;
+      });
     }
   }
 
@@ -162,6 +165,12 @@ class FeedbackPanelState extends State<FeedbackPanel> {
         .toList();
 
     widget.onSubmit(FeedbackData(text: text, images: imageData));
+
+    _controller.clear();
+    setState(() {
+      _images.clear();
+      _hasContent = false;
+    });
 
     _submitResetTimer?.cancel();
     _submitResetTimer = Timer(const Duration(milliseconds: 500), () {
@@ -459,9 +468,7 @@ class FeedbackPanelState extends State<FeedbackPanel> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    atLimit
-                        ? Icons.block
-                        : Icons.add_photo_alternate_outlined,
+                    atLimit ? Icons.block : Icons.add_photo_alternate_outlined,
                     color: atLimit
                         ? AppColors.warning
                         : AppColors.textSecondary,
@@ -613,10 +620,12 @@ class _DropZoneState extends State<_DropZone> {
   void dispose() {
     final body = web.document.body;
     if (body != null) {
-      if (_dragEnterHandler != null)
+      if (_dragEnterHandler != null) {
         body.removeEventListener('dragenter', _dragEnterHandler!);
-      if (_dragLeaveHandler != null)
+      }
+      if (_dragLeaveHandler != null) {
         body.removeEventListener('dragleave', _dragLeaveHandler!);
+      }
       if (_dropHandler != null) body.removeEventListener('drop', _dropHandler!);
     }
     super.dispose();

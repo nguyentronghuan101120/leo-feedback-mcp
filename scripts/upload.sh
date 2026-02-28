@@ -22,8 +22,20 @@ echo "  - $WHL"
 echo "  - $TAR"
 echo ""
 
-read -rsp "Enter PyPI API token: " TOKEN
-echo ""
+if [[ -f .env ]] && grep -q '^PYPI_TOKEN=' .env; then
+  TOKEN=$(grep '^PYPI_TOKEN=' .env | cut -d'=' -f2-)
+  echo "Using saved token from .env"
+elif [[ -n "${PYPI_TOKEN:-}" ]]; then
+  TOKEN="$PYPI_TOKEN"
+  echo "Using token from environment"
+else
+  read -rsp "Enter PyPI API token: " TOKEN
+  echo ""
+  if [[ -n "$TOKEN" ]]; then
+    echo "PYPI_TOKEN=$TOKEN" >> .env
+    echo "Token saved to .env (already in .gitignore)"
+  fi
+fi
 
 if [[ -z "$TOKEN" ]]; then
   echo "Token is required."

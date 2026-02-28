@@ -27,7 +27,6 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     if (prompt == null || prompt.isEmpty) return;
     final sent = ws.submitFeedback(feedback: prompt);
     if (sent) {
-      _feedbackKey.currentState?.clearFeedback();
       if (ws.sessionId != null) {
         context.read<SessionHistoryService>().onFeedbackSubmitted(
               ws.sessionId!,
@@ -55,7 +54,6 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           _lastSessionId = ws.sessionId;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            _feedbackKey.currentState?.clearFeedback();
             autoSubmit.onNewSession();
             if (ws.sessionId != null) {
               context.read<SessionHistoryService>().onNewSession(
