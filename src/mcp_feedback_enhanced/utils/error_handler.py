@@ -6,10 +6,9 @@ context logging, solution suggestions. Does not affect JSON RPC.
 import os
 import time
 import traceback
+import sys
 from enum import Enum
 from typing import Any
-
-from ..debug import debug_log
 
 
 class ErrorType(Enum):
@@ -126,9 +125,6 @@ class ErrorHandler:
             i18n = get_i18n_manager()
             key = f"errors.solutions.{error_type.value}"
             i18n_result = i18n.t(key)
-
-            from typing import Any
-
             result: Any = i18n_result
 
             if isinstance(result, list) and len(result) > 0:
@@ -239,44 +235,14 @@ class ErrorHandler:
         if error_type is None:
             error_type = ErrorHandler.classify_error(error)
 
-        debug_log(f"Error [{error_id}]: {error_type.value} - {error!s}")
-
-        if context:
-            debug_log(f"Error context [{error_id}]: {context}")
-
-        if severity in [ErrorSeverity.HIGH, ErrorSeverity.CRITICAL]:
-            debug_log(f"Error stack [{error_id}]:\n{traceback.format_exc()}")
+        try:
+            print(f"[ERROR] [{error_id}]: {error_type.value} - {error!s}", file=sys.stderr, flush=True)
+            if context:
+                print(f"[ERROR] context [{error_id}]: {context}", file=sys.stderr, flush=True)
+            if severity in [ErrorSeverity.HIGH, ErrorSeverity.CRITICAL]:
+                print(f"[ERROR] stack [{error_id}]:\n{traceback.format_exc()}", file=sys.stderr, flush=True)
+        except Exception:
+            pass
 
         return error_id
 
-    @staticmethod
-    def create_error_response(
-        error: Exception,
-        context: dict[str, Any] | None = None,
-        error_type: ErrorType | None = None,
-        include_solutions: bool = True,
-        for_user: bool = True,
-    ) -> dict[str, Any]:
-        """Create standardized error response."""
-        if error_type is None:
-            error_type = ErrorHandler.classify_error(error)
-
-        error_id = ErrorHandler.log_error_with_context(error, context, error_type)
-
-        response = {
-            "success": False,
-            "error_id": error_id,
-            "error_type": error_type.value,
-            "message": ErrorHandler.format_user_error(
-                error, error_type, context, include_technical=not for_user
-            ),
-        }
-
-        if include_solutions:
-            solutions = ErrorHandler.get_error_solutions(error_type)
-            response["solutions"] = solutions
-
-        if context and not for_user:
-            response["context"] = context
-
-        return response

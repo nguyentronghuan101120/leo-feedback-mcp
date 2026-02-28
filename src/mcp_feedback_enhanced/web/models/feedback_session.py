@@ -10,6 +10,7 @@ Note: subprocess calls use shlex.split() and shell=False to prevent injection.
 import asyncio
 import base64
 import shlex
+import sys
 import subprocess
 import threading
 import time
@@ -21,7 +22,6 @@ from typing import Any
 
 from fastapi import WebSocket
 
-from ...debug import web_debug_log as debug_log
 from ...utils.error_handler import ErrorHandler, ErrorType
 from ...utils.resource_manager import get_resource_manager, register_process
 from ..constants import get_message_code
@@ -103,7 +103,6 @@ def _safe_parse_command(command: str) -> list[str]:
         return parsed
 
     except Exception as e:
-        debug_log(f"Command parse failed: {e}")
         raise ValueError(f"Cannot safely parse command: {e}") from e
 
 
@@ -162,10 +161,6 @@ class WebFeedbackSession:
 
         self._schedule_auto_cleanup()
 
-        debug_log(
-            f"Session {self.session_id} initialized, auto_cleanup_delay={auto_cleanup_delay}s, max_idle={max_idle_time}s"
-        )
-
     def get_message_code(self, key: str) -> str:
         """Get message code for frontend i18n."""
         return get_message_code(key)
@@ -187,9 +182,6 @@ class WebFeedbackSession:
         next_status = next_status_map.get(self.status)
 
         if next_status is None:
-            debug_log(
-                f"Session {self.session_id} already in terminal state {self.status.value}, cannot advance"
-            )
             return False
 
         self.status = next_status
@@ -208,38 +200,7 @@ class WebFeedbackSession:
         if next_status == SessionStatus.FEEDBACK_SUBMITTED:
             self._schedule_auto_cleanup()
 
-        debug_log(
-            f"Session {self.session_id} status: {old_status.value} -> {next_status.value} - {self.status_message}"
-        )
         return True
-
-    def set_error(self, message: str = "Session error") -> bool:
-        """Set error state (can enter from any state)."""
-        old_status = self.status
-        self.status = SessionStatus.ERROR
-        self.status_message = message
-        self.last_activity = time.time()
-
-        debug_log(
-            f"Session {self.session_id} set to error: {old_status.value} -> {self.status.value} - {message}"
-        )
-        return True
-
-    def set_expired(self, message: str = "Session expired") -> bool:
-        """Set expired state (can enter from any state)."""
-        old_status = self.status
-        self.status = SessionStatus.EXPIRED
-        self.status_message = message
-        self.last_activity = time.time()
-
-        debug_log(
-            f"Session {self.session_id} set to expired: {old_status.value} -> {self.status.value} - {message}"
-        )
-        return True
-
-    def can_proceed(self) -> bool:
-        """Check if session can advance to next step."""
-        return self.status in [SessionStatus.WAITING, SessionStatus.FEEDBACK_SUBMITTED]
 
     def is_terminal(self) -> bool:
         """Check if session is in terminal state."""
@@ -278,9 +239,6 @@ class WebFeedbackSession:
 
         idle_time = current_time - self.last_activity
         if idle_time > self.max_idle_time:
-            debug_log(
-                f"Session {self.session_id} idle too long: {idle_time:.1f}s > {self.max_idle_time}s"
-            )
             return True
 
         if self.status == SessionStatus.EXPIRED:
@@ -289,9 +247,6 @@ class WebFeedbackSession:
         if self.status in [SessionStatus.ERROR, SessionStatus.TIMEOUT]:
             error_time = current_time - self.last_activity
             if error_time > 300:
-                debug_log(
-                    f"Session {self.session_id} in error state too long: {error_time:.1f}s"
-                )
                 return True
 
         return False
@@ -314,7 +269,6 @@ class WebFeedbackSession:
         def auto_cleanup():
             try:
                 if not self._cleanup_done and self.is_expired():
-                    debug_log(f"Session {self.session_id} auto cleanup (expired)")
                     try:
                         loop = asyncio.get_running_loop()
                         asyncio.run_coroutine_threadsafe(
@@ -331,63 +285,18 @@ class WebFeedbackSession:
                     context={"session_id": self.session_id, "operation": "auto_cleanup"},
                     error_type=ErrorType.SYSTEM,
                 )
-                debug_log(f"Auto cleanup failed [error_id: {error_id}]: {e}")
 
         self.cleanup_timer = threading.Timer(self.auto_cleanup_delay, auto_cleanup)
         self.cleanup_timer.daemon = True
         self.cleanup_timer.start()
-        debug_log(
-            f"Session {self.session_id} auto cleanup timer set, triggers in {self.auto_cleanup_delay}s"
-        )
-
-    def extend_cleanup_timer(self, additional_time: int | None = None):
-        """Extend cleanup timer by rescheduling auto cleanup."""
-        if additional_time is None:
-            additional_time = self.auto_cleanup_delay
-
-        if self.cleanup_timer:
-            self.cleanup_timer.cancel()
-
-        self.auto_cleanup_delay = additional_time
-        self._schedule_auto_cleanup()
-
-        debug_log(f"Session {self.session_id} cleanup timer extended by {additional_time}s")
 
     def add_cleanup_callback(self, callback: Callable[..., None]):
         """Add cleanup callback."""
         if callback not in self.cleanup_callbacks:
             self.cleanup_callbacks.append(callback)
-            debug_log(f"Session {self.session_id} added cleanup callback")
-
-    def remove_cleanup_callback(self, callback: Callable[..., None]):
-        """Remove cleanup callback."""
-        if callback in self.cleanup_callbacks:
-            self.cleanup_callbacks.remove(callback)
-            debug_log(f"Session {self.session_id} removed cleanup callback")
-
-    def get_cleanup_stats(self) -> dict[str, Any]:
-        """Get cleanup stats."""
-        stats = self.cleanup_stats.copy()
-        stats.update(
-            {
-                "session_id": self.session_id,
-                "age": self.get_age(),
-                "idle_time": self.get_idle_time(),
-                "is_expired": self.is_expired(),
-                "is_active": self.is_active(),
-                "status": self.status.value,
-                "has_websocket": self.websocket is not None,
-                "has_process": self.process is not None,
-                "command_logs_count": len(self.command_logs),
-                "images_count": len(self.images),
-            }
-        )
-        return stats
 
     def update_timeout_settings(self, enabled: bool, timeout_seconds: int = 3600):
         """Update user-configured session timeout."""
-        debug_log(f"Update session timeout: enabled={enabled}, seconds={timeout_seconds}")
-
         if self.user_timeout_timer:
             self.user_timeout_timer.cancel()
             self.user_timeout_timer = None
@@ -398,7 +307,6 @@ class WebFeedbackSession:
         if enabled and self.status == SessionStatus.WAITING:
 
             def timeout_handler():
-                debug_log(f"User timeout reached: {self.session_id}")
                 self.status = SessionStatus.TIMEOUT
                 self.status_message = "User-configured session timeout"
                 self.feedback_completed.set()
@@ -406,7 +314,6 @@ class WebFeedbackSession:
             self.user_timeout_timer = threading.Timer(timeout_seconds, timeout_handler)
             self.user_timeout_timer.daemon = True
             self.user_timeout_timer.start()
-            debug_log(f"Started user timeout timer: {timeout_seconds}s")
 
     async def wait_for_feedback(self, timeout: int = 600) -> dict[str, Any]:
         """
@@ -423,9 +330,6 @@ class WebFeedbackSession:
                 actual_timeout = max(timeout - 1, 5)
             else:
                 actual_timeout = timeout - 5
-            debug_log(
-                f"Session {self.session_id} waiting for feedback, timeout={actual_timeout}s (original={timeout}s)"
-            )
 
             loop = asyncio.get_event_loop()
 
@@ -436,27 +340,21 @@ class WebFeedbackSession:
 
             if completed:
                 if self.status == SessionStatus.TIMEOUT and self.user_timeout_enabled:
-                    debug_log(f"Session {self.session_id} ended due to user timeout")
                     await self._cleanup_resources_on_timeout()
                     raise TimeoutError("Session closed due to user-configured timeout")
 
-                debug_log(f"Session {self.session_id} received user feedback")
                 return {
                     "logs": "\n".join(self.command_logs),
                     "interactive_feedback": self.feedback_result or "",
                     "images": self.images,
                     "settings": self.settings,
                 }
-            debug_log(
-                f"Session {self.session_id} timed out after {actual_timeout}s, cleaning up..."
-            )
             await self._cleanup_resources_on_timeout()
             raise TimeoutError(
                 f"Wait for feedback timed out ({actual_timeout}s), interface auto-closed"
             )
 
         except Exception as e:
-            debug_log(f"Session {self.session_id} exception: {e}")
             await self._cleanup_resources_on_timeout()
             raise
 
@@ -468,9 +366,6 @@ class WebFeedbackSession:
     ):
         """Submit feedback and images."""
         if self.is_terminal():
-            debug_log(
-                f"Session {self.session_id} in terminal state {self.status.value}, ignoring feedback"
-            )
             return
         self.feedback_result = feedback
         self.settings = settings or {}
@@ -492,7 +387,7 @@ class WebFeedbackSession:
                 )
 
             except Exception as e:
-                debug_log(f"Send feedback confirmation failed: {e}")
+                print(str(e), file=sys.stderr)
 
     def add_user_message(self, message_data: dict[str, Any]) -> None:
         """Add user message record."""
@@ -507,9 +402,6 @@ class WebFeedbackSession:
         }
 
         self.user_messages.append(user_message)
-        debug_log(
-            f"Session {self.session_id} added user message, total: {len(self.user_messages)}"
-        )
 
     def _process_images(self, images: list[dict]) -> list[dict]:
         """Process image data into unified format."""
@@ -523,25 +415,19 @@ class WebFeedbackSession:
                     continue
 
                 if size_limit > 0 and img["size"] > size_limit:
-                    debug_log(
-                        f"Image {img['name']} exceeds size limit ({size_limit} bytes), skipped"
-                    )
                     continue
 
                 if isinstance(img["data"], str):
                     try:
                         image_bytes = base64.b64decode(img["data"])
                     except Exception as e:
-                        debug_log(f"Image {img['name']} base64 decode failed: {e}")
                         continue
                 elif isinstance(img["data"], (bytes, bytearray)):
                     image_bytes = bytes(img["data"])
                 else:
-                    debug_log(f"Image {img['name']} unsupported data type: {type(img['data'])}")
                     continue
 
                 if len(image_bytes) == 0:
-                    debug_log(f"Image {img['name']} empty data, skipped")
                     continue
 
                 processed_images.append(
@@ -552,12 +438,7 @@ class WebFeedbackSession:
                     }
                 )
 
-                debug_log(
-                    f"Image {img['name']} processed, size: {len(image_bytes)} bytes"
-                )
-
             except Exception as e:
-                debug_log(f"Image processing error: {e}")
                 continue
 
         return processed_images
@@ -580,13 +461,10 @@ class WebFeedbackSession:
             self.process = None
 
         try:
-            debug_log(f"Execute command: {command}")
-
             try:
                 parsed_command = _safe_parse_command(command)
             except ValueError as e:
                 error_msg = f"Command safety check failed: {e}"
-                debug_log(error_msg)
                 if self.websocket:
                     await self.websocket.send_json(
                         {"type": "command_error", "error": error_msg}
@@ -632,11 +510,10 @@ class WebFeedbackSession:
                                     {"type": "command_output", "output": line}
                                 )
                             except Exception as e:
-                                debug_log(f"WebSocket send failed: {e}")
                                 break
 
                 except Exception as e:
-                    debug_log(f"Read command output error: {e}")
+                    print(str(e), file=sys.stderr)
                 finally:
                     if proc:
                         exit_code = proc.wait()
@@ -649,12 +526,11 @@ class WebFeedbackSession:
                                     {"type": "command_complete", "exit_code": exit_code}
                                 )
                             except Exception as e:
-                                debug_log(f"Send completion signal failed: {e}")
+                                print(str(e), file=sys.stderr)
 
             asyncio.create_task(read_output())
 
         except Exception as e:
-            debug_log(f"Execute command error: {e}")
             if self.websocket:
                 try:
                     await self.websocket.send_json(
@@ -675,7 +551,6 @@ class WebFeedbackSession:
         cleanup_start_time = time.time()
         self._cleanup_done = True
 
-        debug_log(f"Cleaning up session {self.session_id} resources, reason: {reason.value}")
         self.cleanup_stats["cleanup_count"] += 1
         self.cleanup_stats["cleanup_reason"] = reason.value
         self.cleanup_stats["last_cleanup_time"] = datetime.now().isoformat()
@@ -726,10 +601,9 @@ class WebFeedbackSession:
                     await asyncio.sleep(0.1)
 
                     await self._safe_close_websocket()
-                    debug_log(f"Session {self.session_id} WebSocket closed")
                     resources_cleaned += 1
                 except Exception as e:
-                    debug_log(f"Error closing WebSocket: {e}")
+                    print(str(e), file=sys.stderr)
                 finally:
                     self.websocket = None
 
@@ -738,13 +612,11 @@ class WebFeedbackSession:
                     self.process.terminate()
                     try:
                         self.process.wait(timeout=3)
-                        debug_log(f"Session {self.session_id} command process terminated")
                     except subprocess.TimeoutExpired:
                         self.process.kill()
-                        debug_log(f"Session {self.session_id} command process force killed")
                     resources_cleaned += 1
                 except Exception as e:
-                    debug_log(f"Error terminating command process: {e}")
+                    print(str(e), file=sys.stderr)
                 finally:
                     self.process = None
 
@@ -759,7 +631,6 @@ class WebFeedbackSession:
 
             if logs_count > 0 or images_count > 0:
                 resources_cleaned += logs_count + images_count
-                debug_log(f"Cleaned {logs_count} logs and {images_count} images")
 
             if reason == CleanupReason.EXPIRED:
                 self.status = SessionStatus.EXPIRED
@@ -777,7 +648,7 @@ class WebFeedbackSession:
                     else:
                         callback(self, reason)
                 except Exception as e:
-                    debug_log(f"Cleanup callback failed: {e}")
+                    print(str(e), file=sys.stderr)
 
             cleanup_duration = time.time() - cleanup_start_time
             memory_after = 0
@@ -799,11 +670,6 @@ class WebFeedbackSession:
                 }
             )
 
-            debug_log(
-                f"Session {self.session_id} cleanup done, duration={cleanup_duration:.2f}s, "
-                f"resources={resources_cleaned}, memory_freed={memory_freed} bytes"
-            )
-
         except Exception as e:
             error_id = ErrorHandler.log_error_with_context(
                 e,
@@ -813,9 +679,6 @@ class WebFeedbackSession:
                     "operation": "enhanced_resource_cleanup",
                 },
                 error_type=ErrorType.SYSTEM,
-            )
-            debug_log(
-                f"Error cleaning up session {self.session_id} [error_id: {error_id}]: {e}"
             )
 
             self.cleanup_stats["cleanup_duration"] = time.time() - cleanup_start_time
@@ -832,9 +695,6 @@ class WebFeedbackSession:
             return
 
         cleanup_start_time = time.time()
-        debug_log(
-            f"Sync cleanup session {self.session_id}, reason={reason.value}, preserve_websocket={preserve_websocket}"
-        )
 
         self.cleanup_stats["cleanup_count"] += 1
         self.cleanup_stats["cleanup_reason"] = reason.value
@@ -861,12 +721,10 @@ class WebFeedbackSession:
                 try:
                     self.process.terminate()
                     self.process.wait(timeout=5)
-                    debug_log(f"Session {self.session_id} command process terminated")
                     resources_cleaned += 1
                 except Exception:
                     try:
                         self.process.kill()
-                        debug_log(f"Session {self.session_id} command process force killed")
                         resources_cleaned += 1
                     except Exception:
                         pass
@@ -903,7 +761,7 @@ class WebFeedbackSession:
                     if not asyncio.iscoroutinefunction(callback):
                         callback(self, reason)
                 except Exception as e:
-                    debug_log(f"Sync cleanup callback failed: {e}")
+                    print(str(e), file=sys.stderr)
 
             cleanup_duration = time.time() - cleanup_start_time
             memory_after = 0
@@ -925,11 +783,6 @@ class WebFeedbackSession:
                 }
             )
 
-            debug_log(
-                f"Session {self.session_id} sync cleanup done, duration={cleanup_duration:.2f}s, "
-                f"resources={resources_cleaned}, memory_freed={memory_freed} bytes"
-            )
-
         except Exception as e:
             error_id = ErrorHandler.log_error_with_context(
                 e,
@@ -940,9 +793,6 @@ class WebFeedbackSession:
                     "operation": "sync_resource_cleanup",
                 },
                 error_type=ErrorType.SYSTEM,
-            )
-            debug_log(
-                f"Error in sync cleanup session {self.session_id} [error_id: {error_id}]: {e}"
             )
 
             self.cleanup_stats["cleanup_duration"] = time.time() - cleanup_start_time
@@ -960,22 +810,18 @@ class WebFeedbackSession:
             if hasattr(self.websocket, "client_state"):
                 state = self.websocket.client_state
                 if hasattr(state, "name") and state.name == "DISCONNECTED":
-                    debug_log("WebSocket already disconnected, skip close")
                     return
 
             await asyncio.wait_for(
                 self.websocket.close(code=1000, reason="Session cleanup"), timeout=2.0
             )
-            debug_log(f"Session {self.session_id} WebSocket closed")
 
         except TimeoutError:
-            debug_log(f"Session {self.session_id} WebSocket close timeout")
+            pass
         except RuntimeError as e:
             if "attached to a different loop" in str(e):
-                debug_log(
-                    f"Session {self.session_id} WebSocket event loop conflict, ignoring: {e}"
-                )
+                pass
             else:
-                debug_log(f"Session {self.session_id} WebSocket runtime error: {e}")
+                pass
         except Exception as e:
-            debug_log(f"Session {self.session_id} unknown WebSocket close error: {e}")
+            print(str(e), file=sys.stderr)

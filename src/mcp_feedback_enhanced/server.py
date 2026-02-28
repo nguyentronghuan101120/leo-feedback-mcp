@@ -22,9 +22,9 @@ from fastmcp.utilities.types import Image as MCPImage
 from mcp.types import TextContent
 from pydantic import Field
 
-from .debug import server_debug_log as debug_log
 from .utils.error_handler import ErrorHandler, ErrorType
 from .utils.resource_manager import create_temp_file
+from .web.utils.browser import is_wsl_environment
 
 
 def init_encoding():
@@ -97,58 +97,25 @@ else:
 mcp: Any = FastMCP(SERVER_NAME)
 
 
-def is_wsl_environment() -> bool:
-    """Detect if running in WSL (Windows Subsystem for Linux)."""
-    try:
-        if os.path.exists("/proc/version"):
-            with open("/proc/version") as f:
-                version_info = f.read().lower()
-                if "microsoft" in version_info or "wsl" in version_info:
-                    debug_log("WSL detected via /proc/version")
-                    return True
-
-        wsl_env_vars = ["WSL_DISTRO_NAME", "WSL_INTEROP", "WSLENV"]
-        for env_var in wsl_env_vars:
-            if os.getenv(env_var):
-                debug_log(f"WSL env var: {env_var}")
-                return True
-
-        wsl_paths = ["/mnt/c", "/mnt/d", "/proc/sys/fs/binfmt_misc/WSLInterop"]
-        for path in wsl_paths:
-            if os.path.exists(path):
-                debug_log(f"WSL path: {path}")
-                return True
-
-    except Exception as e:
-        debug_log(f"WSL detection error: {e}")
-
-    return False
-
-
 def is_remote_environment() -> bool:
     """Detect if running in a remote environment (SSH, Codespaces, etc.)."""
     if is_wsl_environment():
-        debug_log("WSL not treated as remote")
         return False
 
     for env_var in SSH_ENV_VARS:
         if os.getenv(env_var):
-            debug_log(f"SSH env var: {env_var}")
             return True
 
     for env_var in REMOTE_ENV_VARS:
         if os.getenv(env_var):
-            debug_log(f"Remote env var: {env_var}")
             return True
 
     if os.path.exists("/.dockerenv"):
-        debug_log("Docker container detected")
         return True
 
     if sys.platform == "win32":
         session_name = os.getenv("SESSIONNAME", "")
         if session_name and "RDP" in session_name:
-            debug_log(f"Windows RDP: {session_name}")
             return True
 
     if (
@@ -156,7 +123,6 @@ def is_remote_environment() -> bool:
         and not os.getenv("DISPLAY")
         and not is_wsl_environment()
     ):
-        debug_log("Linux headless (no DISPLAY)")
         return True
 
     return False
@@ -191,7 +157,6 @@ def save_feedback_to_file(feedback_data: dict, file_path: str | None = None) -> 
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(json_data, f, ensure_ascii=False, indent=2)
 
-    debug_log(f"Feedback saved to: {file_path}")
     return file_path
 
 
@@ -242,8 +207,6 @@ def create_feedback_text(feedback_data: dict) -> str:
                         img_info += f"\n     Base64 preview: {preview}"
                         img_info += f"\n     Full Base64 length: {len(img_base64)} chars"
 
-                        debug_log(f"Image {i} Base64 ready, length: {len(img_base64)}")
-
                         include_full_base64 = feedback_data.get("settings", {}).get(
                             "enable_base64_detail", False
                         )
@@ -261,8 +224,8 @@ def create_feedback_text(feedback_data: dict) -> str:
 
                             img_info += f"\n     Full Base64: data:{mime_type};base64,{img_base64}"
 
-                except Exception as e:
-                    debug_log(f"Image {i} Base64 error: {e}")
+                except Exception:
+                    pass
 
             text_parts.append(img_info)
 
@@ -280,21 +243,16 @@ def process_images(images_data: list[dict]) -> list[MCPImage]:
     for i, img in enumerate(images_data, 1):
         try:
             if not img.get("data"):
-                debug_log(f"Image {i} has no data, skipping")
                 continue
 
             if isinstance(img["data"], bytes):
                 image_bytes = img["data"]
-                debug_log(f"Image {i} using raw bytes, size: {len(image_bytes)}")
             elif isinstance(img["data"], str):
                 image_bytes = base64.b64decode(img["data"])
-                debug_log(f"Image {i} decoded from base64, size: {len(image_bytes)}")
             else:
-                debug_log(f"Image {i} unsupported data type: {type(img['data'])}")
                 continue
 
             if len(image_bytes) == 0:
-                debug_log(f"Image {i} data empty, skipping")
                 continue
 
             file_name = img.get("name", "image.png")
@@ -310,17 +268,13 @@ def process_images(images_data: list[dict]) -> list[MCPImage]:
             mcp_image = MCPImage(data=image_bytes, format=image_format)
             mcp_images.append(mcp_image)
 
-            debug_log(f"Image {i} ({file_name}) processed, format: {image_format}")
-
         except Exception as e:
-            error_id = ErrorHandler.log_error_with_context(
+            ErrorHandler.log_error_with_context(
                 e,
                 context={"operation": "image_processing", "image_index": i},
                 error_type=ErrorType.FILE_IO,
             )
-            debug_log(f"Image {i} failed [error_id: {error_id}]: {e}")
 
-    debug_log(f"Processed {len(mcp_images)} image(s)")
     return mcp_images
 
 
@@ -349,18 +303,10 @@ async def interactive_feedback(
     Returns:
         list: List containing TextContent and MCPImage objects representing user feedback
     """
-    is_remote = is_remote_environment()
-    is_wsl = is_wsl_environment()
-
-    debug_log(f"Environment: remote={is_remote}, wsl={is_wsl}")
-    debug_log("Interface: Web UI")
-
     try:
         if not os.path.exists(project_directory):
             project_directory = os.getcwd()
         project_directory = os.path.abspath(project_directory)
-
-        debug_log("Feedback mode: web")
 
         result = await launch_web_feedback_ui(project_directory, summary, timeout)
 
@@ -378,44 +324,38 @@ async def interactive_feedback(
         ):
             feedback_text = create_feedback_text(result)
             feedback_items.append(TextContent(type="text", text=feedback_text))
-            debug_log("Text feedback added")
 
         if result.get("images"):
             mcp_images = process_images(result["images"])
             feedback_items.extend(mcp_images)
-            debug_log(f"Added {len(mcp_images)} image(s)")
 
         if not feedback_items:
             feedback_items.append(
                 TextContent(type="text", text="No feedback provided.")
             )
 
-        debug_log(f"Feedback collected, {len(feedback_items)} item(s)")
         return feedback_items
 
     except Exception as e:
-        error_id = ErrorHandler.log_error_with_context(
+        ErrorHandler.log_error_with_context(
             e,
             context={"operation": "feedback_collection", "project_dir": project_directory},
             error_type=ErrorType.SYSTEM,
         )
 
         user_error_msg = ErrorHandler.format_user_error(e, include_technical=False)
-        debug_log(f"Feedback collection error [error_id: {error_id}]: {e!s}")
 
         return [TextContent(type="text", text=user_error_msg)]
 
 
 async def launch_web_feedback_ui(project_dir: str, summary: str, timeout: int) -> dict:
     """Launch Web UI for feedback collection with custom timeout."""
-    debug_log(f"Launching Web UI, timeout: {timeout}s")
-
     try:
         from .web import launch_web_feedback_ui as web_launch
 
         return await web_launch(project_dir, summary, timeout)
     except ImportError as e:
-        error_id = ErrorHandler.log_error_with_context(
+        ErrorHandler.log_error_with_context(
             e,
             context={"operation": "web_ui_import", "module": "web"},
             error_type=ErrorType.DEPENDENCY,
@@ -423,7 +363,6 @@ async def launch_web_feedback_ui(project_dir: str, summary: str, timeout: int) -
         user_error_msg = ErrorHandler.format_user_error(
             e, ErrorType.DEPENDENCY, include_technical=False
         )
-        debug_log(f"Web UI import failed [error_id: {error_id}]: {e}")
 
         return {
             "command_logs": "",
@@ -461,32 +400,11 @@ def get_system_info() -> str:
 
 def main():
     """Main entry point for package execution. Collects user feedback via Web UI."""
-    debug_enabled = os.getenv("MCP_DEBUG", "").lower() in ("true", "1", "yes", "on")
-
-    if debug_enabled:
-        debug_log("Starting Leo Feedback MCP server")
-        debug_log(f"   Server name: {SERVER_NAME}")
-        debug_log(f"   Version: {__version__}")
-        debug_log(f"   Platform: {sys.platform}")
-        debug_log(f"   Encoding init: {'OK' if _encoding_initialized else 'failed'}")
-        debug_log(f"   Remote: {is_remote_environment()}")
-        debug_log(f"   WSL: {is_wsl_environment()}")
-        debug_log("   Interface: Web UI")
-        debug_log("   Waiting for AI agent calls...")
-        debug_log("Calling mcp.run()...")
-
     try:
         mcp.run()
     except KeyboardInterrupt:
-        if debug_enabled:
-            debug_log("Interrupt received, exiting")
         sys.exit(0)
-    except Exception as e:
-        if debug_enabled:
-            debug_log(f"MCP server startup failed: {e}")
-            import traceback
-
-            debug_log(f"Traceback: {traceback.format_exc()}")
+    except Exception:
         sys.exit(1)
 
 

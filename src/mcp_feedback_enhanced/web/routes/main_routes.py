@@ -4,6 +4,7 @@ Main route handlers for the Web UI.
 """
 
 import json
+import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -13,7 +14,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from ... import __version__
-from ...debug import web_debug_log as debug_log
 from ..constants import get_message_code as get_msg_code
 
 
@@ -129,11 +129,9 @@ def setup_routes(manager: "WebUIManager"):
 
             sessions_data.sort(key=lambda x: x["created_at"], reverse=True)
 
-            debug_log(f"Returning real-time status for {len(sessions_data)} sessions")
             return JSONResponse(content={"sessions": sessions_data})
 
         except Exception as e:
-            debug_log(f"Failed to get all sessions status: {e}")
             return JSONResponse(
                 status_code=500,
                 content={
@@ -161,7 +159,6 @@ def setup_routes(manager: "WebUIManager"):
 
             current_session.add_user_message(data)
 
-            debug_log(f"User message added to session {current_session.session_id}")
             return JSONResponse(
                 content={
                     "status": "success",
@@ -170,7 +167,6 @@ def setup_routes(manager: "WebUIManager"):
             )
 
         except Exception as e:
-            debug_log(f"Failed to add user message: {e}")
             return JSONResponse(
                 status_code=500,
                 content={
@@ -189,13 +185,10 @@ def setup_routes(manager: "WebUIManager"):
 
         await websocket.accept()
 
-        debug_log(f"WebSocket connection established, lang handled by frontend: {lang}")
-
         if session.websocket and session.websocket != websocket:
-            debug_log("Session already has WebSocket, replacing with new connection")
+            pass
 
         session.websocket = websocket
-        debug_log(f"WebSocket connected: active session {session.session_id}")
 
         try:
             await websocket.send_json(
@@ -206,7 +199,6 @@ def setup_routes(manager: "WebUIManager"):
             )
 
             if getattr(manager, "_pending_session_update", False):
-                debug_log("Pending session update detected, sending notification")
                 await websocket.send_json(
                     {
                         "type": "session_updated",
@@ -220,15 +212,13 @@ def setup_routes(manager: "WebUIManager"):
                     }
                 )
                 manager._pending_session_update = False
-                debug_log("Session update notification sent to frontend")
             else:
                 await websocket.send_json(
                     {"type": "status_update", "status_info": session.get_status_info()}
                 )
-                debug_log("Current session status sent to frontend")
 
         except Exception as e:
-            debug_log(f"Failed to send connection confirmation: {e}")
+            print(str(e), file=sys.stderr)
 
         try:
             while True:
@@ -239,19 +229,17 @@ def setup_routes(manager: "WebUIManager"):
                 if current_session and current_session.websocket == websocket:
                     await handle_websocket_message(manager, current_session, message)
                 else:
-                    debug_log("Session switched or WebSocket mismatch, ignoring message")
                     break
 
         except WebSocketDisconnect:
-            debug_log("WebSocket disconnected")
+            pass
         except ConnectionResetError:
-            debug_log("WebSocket connection reset")
+            pass
         except Exception as e:
-            debug_log(f"WebSocket error: {e}")
+            print(str(e), file=sys.stderr)
         finally:
             if session.websocket == websocket:
                 session.websocket = None
-                debug_log("Cleaned WebSocket from session")
 
     @manager.app.post("/api/save-settings")
     async def save_settings(request: Request):
@@ -267,8 +255,6 @@ def setup_routes(manager: "WebUIManager"):
             with open(settings_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
 
-            debug_log(f"Settings saved to: {settings_file}")
-
             return JSONResponse(
                 content={
                     "status": "success",
@@ -277,7 +263,6 @@ def setup_routes(manager: "WebUIManager"):
             )
 
         except Exception as e:
-            debug_log(f"Failed to save settings: {e}")
             return JSONResponse(
                 status_code=500,
                 content={
@@ -299,13 +284,10 @@ def setup_routes(manager: "WebUIManager"):
                 with open(settings_file, encoding="utf-8") as f:
                     settings = json.load(f)
 
-                debug_log(f"Settings loaded from: {settings_file}")
                 return JSONResponse(content=settings)
-            debug_log("Settings file not found, returning empty")
             return JSONResponse(content={})
 
         except Exception as e:
-            debug_log(f"Failed to load settings: {e}")
             return JSONResponse(
                 status_code=500,
                 content={
@@ -325,9 +307,8 @@ def setup_routes(manager: "WebUIManager"):
 
             if settings_file.exists():
                 settings_file.unlink()
-                debug_log(f"Settings file deleted: {settings_file}")
             else:
-                debug_log("Settings file not found, nothing to delete")
+                pass
 
             return JSONResponse(
                 content={
@@ -337,7 +318,6 @@ def setup_routes(manager: "WebUIManager"):
             )
 
         except Exception as e:
-            debug_log(f"Failed to clear settings: {e}")
             return JSONResponse(
                 status_code=500,
                 content={
@@ -359,8 +339,6 @@ def setup_routes(manager: "WebUIManager"):
                 with open(history_file, encoding="utf-8") as f:
                     history_data = json.load(f)
 
-                debug_log(f"Session history loaded from: {history_file}")
-
                 if isinstance(history_data, dict):
                     sessions = history_data.get("sessions", [])
                     last_cleanup = history_data.get("lastCleanup", 0)
@@ -372,11 +350,9 @@ def setup_routes(manager: "WebUIManager"):
                     content={"sessions": sessions, "lastCleanup": last_cleanup}
                 )
 
-            debug_log("Session history file not found, returning empty")
             return JSONResponse(content={"sessions": [], "lastCleanup": 0})
 
         except Exception as e:
-            debug_log(f"Failed to load session history: {e}")
             return JSONResponse(
                 status_code=500,
                 content={
@@ -407,9 +383,7 @@ def setup_routes(manager: "WebUIManager"):
             with open(history_file, "w", encoding="utf-8") as f:
                 json.dump(history_data, f, ensure_ascii=False, indent=2)
 
-            debug_log(f"Session history saved to: {history_file}")
             session_count = len(history_data["sessions"])
-            debug_log(f"Saved {session_count} session records")
 
             return JSONResponse(
                 content={
@@ -420,7 +394,6 @@ def setup_routes(manager: "WebUIManager"):
             )
 
         except Exception as e:
-            debug_log(f"Failed to save session history: {e}")
             return JSONResponse(
                 status_code=500,
                 content={
@@ -442,15 +415,12 @@ def setup_routes(manager: "WebUIManager"):
                 with open(settings_file, encoding="utf-8") as f:
                     settings_data = json.load(f)
                     log_level = settings_data.get("logLevel", "INFO")
-                    debug_log(f"Log level loaded from settings: {log_level}")
                     return JSONResponse(content={"logLevel": log_level})
             else:
                 default_log_level = "INFO"
-                debug_log(f"Using default log level: {default_log_level}")
                 return JSONResponse(content={"logLevel": default_log_level})
 
         except Exception as e:
-            debug_log(f"Failed to get log level: {e}")
             return JSONResponse(
                 status_code=500,
                 content={
@@ -490,8 +460,6 @@ def setup_routes(manager: "WebUIManager"):
             with open(settings_file, "w", encoding="utf-8") as f:
                 json.dump(settings_data, f, ensure_ascii=False, indent=2)
 
-            debug_log(f"Log level set to: {log_level}")
-
             return JSONResponse(
                 content={
                     "status": "success",
@@ -501,7 +469,6 @@ def setup_routes(manager: "WebUIManager"):
             )
 
         except Exception as e:
-            debug_log(f"Failed to set log level: {e}")
             return JSONResponse(
                 status_code=500,
                 content={
@@ -541,7 +508,7 @@ async def handle_websocket_message(manager: "WebUIManager", session, data: dict)
                     {"type": "status_update", "status_info": session.get_status_info()}
                 )
             except Exception as e:
-                debug_log(f"Failed to send status update: {e}")
+                print(str(e), file=sys.stderr)
 
     elif message_type == "heartbeat":
         session.last_heartbeat = time.time()
@@ -556,18 +523,16 @@ async def handle_websocket_message(manager: "WebUIManager", session, data: dict)
                     }
                 )
             except Exception as e:
-                debug_log(f"Failed to send heartbeat response: {e}")
+                print(str(e), file=sys.stderr)
 
     elif message_type == "user_timeout":
-        debug_log(f"User timeout notification received: {session.session_id}")
         await session._cleanup_resources_on_timeout()
 
     elif message_type == "pong":
-        debug_log(f"Pong received, timestamp: {data.get('timestamp', 'N/A')}")
+        pass
 
     elif message_type == "update_timeout_settings":
         settings = data.get("settings", {})
-        debug_log(f"Timeout settings update received: {settings}")
         if settings.get("enabled"):
             session.update_timeout_settings(
                 enabled=True, timeout_seconds=settings.get("seconds", 3600)
@@ -576,15 +541,4 @@ async def handle_websocket_message(manager: "WebUIManager", session, data: dict)
             session.update_timeout_settings(enabled=False)
 
     else:
-        debug_log(f"Unknown message type: {message_type}")
-
-
-async def _delayed_server_stop(manager: "WebUIManager"):
-    """Delayed server stop."""
-    import asyncio
-
-    await asyncio.sleep(5)
-    from ..main import stop_web_ui
-
-    stop_web_ui()
-    debug_log("Web UI server stopped due to user timeout")
+        pass

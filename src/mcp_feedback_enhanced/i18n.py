@@ -7,8 +7,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .debug import i18n_debug_log as debug_log
-
 
 class I18nManager:
     """i18n manager."""
@@ -43,14 +41,9 @@ class I18nManager:
                     with open(translation_file, encoding="utf-8") as f:
                         data = json.load(f)
                         self._translations[lang_code] = data
-                        debug_log(
-                            f"Loaded language {lang_code}: {data.get('meta', {}).get('displayName', lang_code)}"
-                        )
-                except Exception as e:
-                    debug_log(f"Failed to load language file {lang_code}: {e}")
+                except Exception:
                     self._translations[lang_code] = {}
             else:
-                debug_log(f"Language file not found: {translation_file}")
                 self._translations[lang_code] = {}
 
     def _detect_language(self) -> str:
@@ -246,56 +239,6 @@ class I18nManager:
 
         return None
 
-    def get_language_display_name(self, language_code: str) -> str:
-        """Get language display name."""
-        current_translations = self._translations.get(self._current_language, {})
-
-        lang_key = None
-        if language_code == "zh-TW":
-            lang_key = "languageNames.zhTw"
-        elif language_code == "zh-CN":
-            lang_key = "languageNames.zhCn"
-        elif language_code == "en":
-            lang_key = "languageNames.en"
-        else:
-            lang_key = f"languageNames.{language_code.replace('-', '').lower()}"
-
-        if lang_key:
-            display_name = self._get_nested_value(current_translations, lang_key)
-            if display_name:
-                return display_name
-
-        meta = self.get_language_info(language_code)
-        display_name = meta.get("displayName", language_code)
-        return str(display_name) if display_name else language_code
-
-    def reload_translations(self) -> None:
-        """Reload all translation files."""
-        self._load_all_translations()
-
-    def add_language(self, language_code: str, translation_file_path: str) -> bool:
-        """Add new language support."""
-        try:
-            translation_file = Path(translation_file_path)
-            if not translation_file.exists():
-                return False
-
-            with open(translation_file, encoding="utf-8") as f:
-                data = json.load(f)
-                self._translations[language_code] = data
-
-                if language_code not in self._supported_languages:
-                    self._supported_languages.append(language_code)
-
-                debug_log(
-                    f"Added language {language_code}: {data.get('meta', {}).get('displayName', language_code)}"
-                )
-                return True
-        except Exception as e:
-            debug_log(f"Failed to add language {language_code}: {e}")
-            return False
-
-
 _i18n_manager = None
 
 
@@ -312,16 +255,6 @@ def t(key: str, **kwargs) -> str:
     return get_i18n_manager().t(key, **kwargs)
 
 
-def set_language(language: str) -> bool:
-    """Set language."""
-    return get_i18n_manager().set_language(language)
-
-
 def get_current_language() -> str:
     """Get current language."""
     return get_i18n_manager().get_current_language()
-
-
-def reload_translations() -> None:
-    """Reload translations."""
-    get_i18n_manager().reload_translations()

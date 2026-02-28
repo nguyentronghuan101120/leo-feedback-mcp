@@ -6,8 +6,6 @@ import subprocess
 import webbrowser
 from collections.abc import Callable
 
-from ...debug import server_debug_log as debug_log
-
 
 def is_wsl_environment() -> bool:
     """Detect if running in WSL environment."""
@@ -43,14 +41,10 @@ def open_browser_in_wsl(url: str) -> None:
         )
 
         if result.returncode == 0:
-            debug_log(f"Browser launched via cmd.exe: {url}")
             return
-        debug_log(
-            f"cmd.exe launch failed, returncode: {result.returncode}, error: {result.stderr}"
-        )
 
-    except Exception as e:
-        debug_log(f"Failed to launch browser via cmd.exe: {e}")
+    except Exception:
+        pass
 
     try:
         cmd = ["powershell.exe", "-c", f'Start-Process "{url}"']
@@ -59,14 +53,10 @@ def open_browser_in_wsl(url: str) -> None:
         )
 
         if result.returncode == 0:
-            debug_log(f"Browser launched via powershell.exe: {url}")
             return
-        debug_log(
-            f"powershell.exe launch failed, returncode: {result.returncode}, error: {result.stderr}"
-        )
 
-    except Exception as e:
-        debug_log(f"Failed to launch browser via powershell.exe: {e}")
+    except Exception:
+        pass
 
     try:
         cmd = ["wslview", url]
@@ -75,14 +65,10 @@ def open_browser_in_wsl(url: str) -> None:
         )
 
         if result.returncode == 0:
-            debug_log(f"Browser launched via wslview: {url}")
             return
-        debug_log(
-            f"wslview launch failed, returncode: {result.returncode}, error: {result.stderr}"
-        )
 
-    except Exception as e:
-        debug_log(f"Failed to launch browser via wslview: {e}")
+    except Exception:
+        pass
 
     raise Exception("Cannot launch Windows browser from WSL")
 
@@ -90,10 +76,8 @@ def open_browser_in_wsl(url: str) -> None:
 def smart_browser_open(url: str) -> None:
     """Open browser using best method for current environment."""
     if is_wsl_environment():
-        debug_log("WSL detected, using WSL-specific browser launch")
         open_browser_in_wsl(url)
     else:
-        debug_log("Using standard browser launch")
         webbrowser.open(url)
 
 

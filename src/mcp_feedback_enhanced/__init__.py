@@ -14,22 +14,16 @@ Features:
 - Audio & browser notifications
 """
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 __author__ = "Leo Nguyen"
-
-import os
 
 from .server import main as run_server
 from .web import WebUIManager, get_web_ui_manager, launch_web_feedback_ui, stop_web_ui
-
-
-feedback_ui = None
 
 __all__ = [
     "WebUIManager",
     "__author__",
     "__version__",
-    "feedback_ui",
     "get_web_ui_manager",
     "launch_web_feedback_ui",
     "run_server",

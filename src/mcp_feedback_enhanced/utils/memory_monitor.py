@@ -11,7 +11,6 @@ from typing import Any
 
 import psutil
 
-from ..debug import debug_log
 from .error_handler import ErrorHandler, ErrorType
 
 
@@ -90,12 +89,9 @@ class MemoryMonitor:
 
         self.process = psutil.Process()
 
-        debug_log("MemoryMonitor initialized")
-
     def start_monitoring(self) -> bool:
         """Start memory monitoring."""
         if self.is_monitoring:
-            debug_log("Memory monitoring already running")
             return True
 
         try:
@@ -108,44 +104,17 @@ class MemoryMonitor:
             )
             self.monitor_thread.start()
 
-            debug_log(f"Memory monitoring started, interval {self.monitoring_interval}s")
             return True
 
         except Exception as e:
             self.is_monitoring = False
-            error_id = ErrorHandler.log_error_with_context(
+            ErrorHandler.log_error_with_context(
                 e, context={"operation": "start_memory_monitoring"}, error_type=ErrorType.SYSTEM
             )
-            debug_log(f"Failed to start memory monitoring [error_id: {error_id}]: {e}")
-            return False
-
-    def stop_monitoring(self) -> bool:
-        """Stop memory monitoring."""
-        if not self.is_monitoring:
-            debug_log("Memory monitoring not running")
-            return True
-
-        try:
-            self.is_monitoring = False
-            self._stop_event.set()
-
-            if self.monitor_thread and self.monitor_thread.is_alive():
-                self.monitor_thread.join(timeout=5)
-
-            debug_log("Memory monitoring stopped")
-            return True
-
-        except Exception as e:
-            error_id = ErrorHandler.log_error_with_context(
-                e, context={"operation": "stop_memory_monitoring"}, error_type=ErrorType.SYSTEM
-            )
-            debug_log(f"Failed to stop memory monitoring [error_id: {error_id}]: {e}")
             return False
 
     def _monitoring_loop(self):
         """Memory monitoring main loop."""
-        debug_log("Memory monitoring loop started")
-
         while not self._stop_event.is_set():
             try:
                 snapshot = self._collect_memory_snapshot()
@@ -157,17 +126,14 @@ class MemoryMonitor:
                     break
 
             except Exception as e:
-                error_id = ErrorHandler.log_error_with_context(
+                ErrorHandler.log_error_with_context(
                     e,
                     context={"operation": "memory_monitoring_loop"},
                     error_type=ErrorType.SYSTEM,
                 )
-                debug_log(f"Memory monitoring loop error [error_id: {error_id}]: {e}")
 
                 if self._stop_event.wait(5):
                     break
-
-        debug_log("Memory monitoring loop ended")
 
     def _collect_memory_snapshot(self) -> MemorySnapshot:
         """Collect memory snapshot."""
@@ -192,10 +158,9 @@ class MemoryMonitor:
             )
 
         except Exception as e:
-            error_id = ErrorHandler.log_error_with_context(
+            ErrorHandler.log_error_with_context(
                 e, context={"operation": "collect_memory_snapshot"}, error_type=ErrorType.SYSTEM
             )
-            debug_log(f"Failed to collect memory snapshot [error_id: {error_id}]: {e}")
             raise
 
     def _check_memory_usage(self, snapshot: MemorySnapshot):
@@ -244,32 +209,25 @@ class MemoryMonitor:
         for callback in self.alert_callbacks:
             try:
                 callback(alert)
-            except Exception as e:
-                debug_log(f"Alert callback failed: {e}")
-
-        debug_log(f"Memory alert [{alert.level}]: {alert.message}")
+            except Exception:
+                pass
 
     def _trigger_cleanup(self):
         """Trigger cleanup."""
         self.cleanup_triggers_count += 1
-        debug_log("Triggering memory cleanup")
 
-        collected = gc.collect()
-        debug_log(f"GC collected {collected} objects")
+        gc.collect()
 
         for callback in self.cleanup_callbacks:
             try:
                 callback()
-            except Exception as e:
-                debug_log(f"Cleanup callback failed: {e}")
+            except Exception:
+                pass
 
     def _trigger_emergency_cleanup(self):
         """Trigger emergency cleanup."""
-        debug_log("Triggering emergency memory cleanup")
-
         for _ in range(3):
-            collected = gc.collect()
-            debug_log(f"Force GC collected {collected} objects")
+            gc.collect()
 
         for callback in self.cleanup_callbacks:
             try:
@@ -280,32 +238,18 @@ class MemoryMonitor:
                     callback(force=True)
                 else:
                     callback()
-            except Exception as e:
-                debug_log(f"Emergency cleanup callback failed: {e}")
+            except Exception:
+                pass
 
     def add_cleanup_callback(self, callback: Callable):
         """Add cleanup callback."""
         if callback not in self.cleanup_callbacks:
             self.cleanup_callbacks.append(callback)
-            debug_log("Cleanup callback added")
 
     def add_alert_callback(self, callback: Callable[[MemoryAlert], None]):
         """Add alert callback."""
         if callback not in self.alert_callbacks:
             self.alert_callbacks.append(callback)
-            debug_log("Alert callback added")
-
-    def remove_cleanup_callback(self, callback: Callable):
-        """Remove cleanup callback."""
-        if callback in self.cleanup_callbacks:
-            self.cleanup_callbacks.remove(callback)
-            debug_log("Cleanup callback removed")
-
-    def remove_alert_callback(self, callback: Callable[[MemoryAlert], None]):
-        """Remove alert callback."""
-        if callback in self.alert_callbacks:
-            self.alert_callbacks.remove(callback)
-            debug_log("Alert callback removed")
 
     def get_current_memory_info(self) -> dict[str, Any]:
         """Get current memory info."""
@@ -328,12 +272,11 @@ class MemoryMonitor:
                 "status": self._get_memory_status(snapshot.system_percent / 100.0),
             }
         except Exception as e:
-            error_id = ErrorHandler.log_error_with_context(
+            ErrorHandler.log_error_with_context(
                 e,
                 context={"operation": "get_current_memory_info"},
                 error_type=ErrorType.SYSTEM,
             )
-            debug_log(f"Failed to get memory info [error_id: {error_id}]: {e}")
             return {}
 
     def get_memory_stats(self) -> MemoryStats:
@@ -405,49 +348,6 @@ class MemoryMonitor:
         if diff > 0:
             return "increasing"
         return "decreasing"
-
-    def force_cleanup(self):
-        """Manually trigger cleanup."""
-        debug_log("Manual memory cleanup triggered")
-        self._trigger_cleanup()
-
-    def force_emergency_cleanup(self):
-        """Manually trigger emergency cleanup."""
-        debug_log("Manual emergency memory cleanup triggered")
-        self._trigger_emergency_cleanup()
-
-    def reset_stats(self):
-        """Reset stats."""
-        self.snapshots.clear()
-        self.alerts.clear()
-        self.cleanup_triggers_count = 0
-        self.start_time = datetime.now() if self.is_monitoring else None
-        debug_log("Memory monitoring stats reset")
-
-    def export_memory_data(self) -> dict[str, Any]:
-        """Export memory data."""
-        return {
-            "config": {
-                "warning_threshold": self.warning_threshold,
-                "critical_threshold": self.critical_threshold,
-                "emergency_threshold": self.emergency_threshold,
-                "monitoring_interval": self.monitoring_interval,
-            },
-            "current_info": self.get_current_memory_info(),
-            "stats": self.get_memory_stats().__dict__,
-            "recent_alerts": [
-                {
-                    "level": alert.level,
-                    "message": alert.message,
-                    "timestamp": alert.timestamp.isoformat(),
-                    "memory_percent": alert.memory_percent,
-                    "recommended_action": alert.recommended_action,
-                }
-                for alert in self.get_recent_alerts()
-            ],
-            "is_monitoring": self.is_monitoring,
-        }
-
 
 _memory_monitor: MemoryMonitor | None = None
 _monitor_lock = threading.Lock()

@@ -4,6 +4,7 @@
 import asyncio
 import concurrent.futures
 import os
+import sys
 import threading
 import time
 import uuid
@@ -15,7 +16,6 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 
-from ..debug import web_debug_log as debug_log
 from ..utils.error_handler import ErrorHandler, ErrorType
 from ..utils.memory_monitor import get_memory_monitor
 from .models import CleanupReason, SessionStatus, WebFeedbackSession
@@ -32,10 +32,8 @@ class WebUIManager:
         env_host = os.getenv("MCP_WEB_HOST")
         if env_host:
             self.host = env_host
-            debug_log(f"Using host from env: {self.host}")
         else:
             self.host = host
-            debug_log(f"MCP_WEB_HOST not set, using default host {self.host}")
 
         preferred_port = 8765
 
@@ -45,40 +43,29 @@ class WebUIManager:
                 custom_port = int(env_port)
                 if custom_port == 0:
                     preferred_port = 0
-                    debug_log("Using auto port allocation (0) from env")
                 elif 1024 <= custom_port <= 65535:
                     preferred_port = custom_port
-                    debug_log(f"Using port from env: {preferred_port}")
-                else:
-                    debug_log(
-                        f"MCP_WEB_PORT invalid ({custom_port}), must be 1024-65535 or 0, using 8765"
-                    )
             except ValueError:
-                debug_log(f"MCP_WEB_PORT invalid format ({env_port}), must be numeric, using 8765")
+                pass
         else:
-            debug_log(f"MCP_WEB_PORT not set, using default port {preferred_port}")
+            pass
 
         auto_cleanup = os.environ.get("MCP_TEST_MODE", "").lower() != "true"
 
         if port is not None:
             self.port = port
             if not PortManager.is_port_available(self.host, self.port):
-                debug_log(f"Warning: port {self.port} may be in use")
                 if os.environ.get("MCP_TEST_MODE", "").lower() == "true":
-                    debug_log("Test mode: searching for alternative port")
                     original_port = self.port
                     self.port = PortManager.find_free_port_enhanced(
                         preferred_port=self.port, auto_cleanup=False, host=self.host
                     )
-                    if self.port != original_port:
-                        debug_log(f"Switched to available port: {original_port} -> {self.port}")
         elif preferred_port == 0:
             import socket
 
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.bind((self.host, 0))
                 self.port = s.getsockname()[1]
-            debug_log(f"System-assigned port: {self.port}")
         else:
             self.port = PortManager.find_free_port_enhanced(
                 preferred_port=preferred_port, auto_cleanup=auto_cleanup, host=self.host
@@ -112,9 +99,6 @@ class WebUIManager:
 
         self._init_basic_components()
 
-        debug_log(f"WebUIManager initialized, starting at {self.host}:{self.port}")
-        debug_log("Feedback mode: web")
-
     def _init_basic_components(self):
         """Sync initialization of basic components."""
         self._setup_static_files()
@@ -126,9 +110,6 @@ class WebUIManager:
             if self._initialization_complete:
                 return
 
-        debug_log("Starting parallel component initialization...")
-        start_time = time.time()
-
         tasks = []
         tasks.append(self._preload_i18n_async())
 
@@ -136,23 +117,18 @@ class WebUIManager:
             results = await asyncio.gather(*tasks, return_exceptions=True)
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    debug_log(f"Parallel init task {i} failed: {result}")
+                    pass
 
         with self._initialization_lock:
             self._initialization_complete = True
-
-        elapsed = time.time() - start_time
-        debug_log(f"Parallel init complete in {elapsed:.2f}s")
 
     async def _preload_i18n_async(self):
         """Async preload of i18n resources (handled by frontend)."""
 
         def preload_i18n():
             try:
-                debug_log("i18n preload complete (frontend)")
                 return True
             except Exception as e:
-                debug_log(f"i18n preload failed: {e}")
                 return False
 
         loop = asyncio.get_event_loop()
@@ -194,54 +170,43 @@ class WebUIManager:
 
             return response
 
-        debug_log("Compression and cache middleware configured")
-
     def _setup_memory_monitoring(self):
         """Setup memory monitoring."""
         try:
             self.memory_monitor = get_memory_monitor()
 
             def web_memory_alert(alert):
-                debug_log(f"Web UI memory alert [{alert.level}]: {alert.message}")
                 if alert.level == "critical":
-                    cleaned = self.cleanup_expired_sessions()
-                    debug_log(f"Memory critical: cleaned {cleaned} expired sessions")
+                    self.cleanup_expired_sessions()
                 elif alert.level == "emergency":
-                    cleaned = self.cleanup_sessions_by_memory_pressure(force=True)
-                    debug_log(f"Memory emergency: force cleaned {cleaned} sessions")
+                    self.cleanup_sessions_by_memory_pressure(force=True)
 
             self.memory_monitor.add_alert_callback(web_memory_alert)
 
             def session_cleanup_callback(force: bool = False):
                 try:
                     if force:
-                        cleaned = self.cleanup_sessions_by_memory_pressure(force=True)
-                        debug_log(f"Memory monitor force cleaned {cleaned} sessions")
+                        self.cleanup_sessions_by_memory_pressure(force=True)
                     else:
-                        cleaned = self.cleanup_expired_sessions()
-                        debug_log(f"Memory monitor cleaned {cleaned} expired sessions")
+                        self.cleanup_expired_sessions()
                 except Exception as e:
-                    error_id = ErrorHandler.log_error_with_context(
+                    ErrorHandler.log_error_with_context(
                         e,
                         context={"operation": "memory_monitor_session_cleanup", "force": force},
                         error_type=ErrorType.SYSTEM,
                     )
-                    debug_log(f"Memory monitor session cleanup failed [error_id: {error_id}]: {e}")
 
             self.memory_monitor.add_cleanup_callback(session_cleanup_callback)
 
             if not self.memory_monitor.is_monitoring:
                 self.memory_monitor.start_monitoring()
 
-            debug_log("Web UI memory monitoring configured with session cleanup callback")
-
         except Exception as e:
-            error_id = ErrorHandler.log_error_with_context(
+            ErrorHandler.log_error_with_context(
                 e,
                 context={"operation": "setup_web_ui_memory_monitoring"},
                 error_type=ErrorType.SYSTEM,
             )
-            debug_log(f"Setup Web UI memory monitoring failed [error_id: {error_id}]: {e}")
 
     def _setup_static_files(self):
         """Setup static file serving (Flutter Web only)."""
@@ -252,13 +217,10 @@ class WebUIManager:
 
         if dev_path.exists():
             self.flutter_build_path = dev_path
-            debug_log(f"Flutter Web build found (dev): {dev_path}")
         elif pkg_path.exists():
             self.flutter_build_path = pkg_path
-            debug_log(f"Flutter Web build found (package): {pkg_path}")
         else:
             self.flutter_build_path = None
-            debug_log(f"Flutter Web build not found. Searched: {dev_path}, {pkg_path}")
 
     def create_session(self, project_directory: str, summary: str) -> str:
         """Create new feedback session; single active session mode, preserves tab state."""
@@ -266,37 +228,22 @@ class WebUIManager:
         old_websocket = None
         if old_session and old_session.websocket:
             old_websocket = old_session.websocket
-            debug_log("Saved old session WebSocket for update notification")
 
         session_id = str(uuid.uuid4())
         session = WebFeedbackSession(session_id, project_directory, summary)
 
         if old_session:
-            debug_log(
-                f"Processing old session {old_session.session_id} state transition, status: {old_session.status.value}"
-            )
-
             if hasattr(old_session, "active_tabs"):
                 self._merge_tabs_to_global(old_session.active_tabs)
 
             if old_session.status == SessionStatus.FEEDBACK_SUBMITTED:
-                debug_log(
-                    f"Old session {old_session.session_id} next_step: submitted -> completed"
-                )
                 success = old_session.next_step("Feedback processed, session completed")
-                if success:
-                    debug_log(f"Old session {old_session.session_id} moved to completed")
-                else:
-                    debug_log(f"Old session {old_session.session_id} failed next_step")
             else:
-                debug_log(
-                    f"Old session {old_session.session_id} status {old_session.status.value}, no transition"
-                )
+                pass
 
             if old_session.session_id in self.sessions:
-                debug_log(f"Old session {old_session.session_id} still in sessions dict")
+                pass
             else:
-                debug_log(f"Old session {old_session.session_id} not in dict, re-adding")
                 self.sessions[old_session.session_id] = old_session
 
             old_session._cleanup_sync()
@@ -306,50 +253,16 @@ class WebUIManager:
         self.current_session = session
         self.sessions[session_id] = session
 
-        debug_log(f"Created new active session: {session_id}")
-        debug_log(f"Inherited {len(session.active_tabs)} active tabs")
-
         if old_websocket:
             session.websocket = old_websocket
-            debug_log("Transferred old WebSocket connection to new session")
         else:
             self._pending_session_update = True
-            debug_log("No old WebSocket, set pending session update")
 
         return session_id
-
-    def get_session(self, session_id: str) -> WebFeedbackSession | None:
-        """Get feedback session (backward compatible)."""
-        return self.sessions.get(session_id)
 
     def get_current_session(self) -> WebFeedbackSession | None:
         """Get current active session."""
         return self.current_session
-
-    def remove_session(self, session_id: str):
-        """Remove feedback session."""
-        if session_id in self.sessions:
-            session = self.sessions[session_id]
-            session.cleanup()
-            del self.sessions[session_id]
-
-            if self.current_session and self.current_session.session_id == session_id:
-                self.current_session = None
-                debug_log("Cleared current active session")
-
-            debug_log(f"Removed feedback session: {session_id}")
-
-    def clear_current_session(self):
-        """Clear current active session."""
-        if self.current_session:
-            session_id = self.current_session.session_id
-            self.current_session.cleanup()
-            self.current_session = None
-
-            if session_id in self.sessions:
-                del self.sessions[session_id]
-
-            debug_log("Cleared current active session")
 
     def _merge_tabs_to_global(self, session_tabs: dict):
         """Merge session tab state into global state."""
@@ -366,34 +279,6 @@ class WebUIManager:
             if current_time - tab_info.get("last_seen", 0) <= expired_threshold:
                 self.global_active_tabs[tab_id] = tab_info
 
-        debug_log(f"Merged tab state, global active tabs: {len(self.global_active_tabs)}")
-
-    def get_global_active_tabs_count(self) -> int:
-        """Get count of global active tabs."""
-        current_time = time.time()
-        expired_threshold = 60
-
-        valid_tabs = {
-            tab_id: tab_info
-            for tab_id, tab_info in self.global_active_tabs.items()
-            if current_time - tab_info.get("last_seen", 0) <= expired_threshold
-        }
-
-        self.global_active_tabs = valid_tabs
-        return len(valid_tabs)
-
-    async def broadcast_to_active_tabs(self, message: dict):
-        """Broadcast message to all active tabs."""
-        if not self.current_session or not self.current_session.websocket:
-            debug_log("No active WebSocket connection, cannot broadcast")
-            return
-
-        try:
-            await self.current_session.websocket.send_json(message)
-            debug_log(f"Broadcast to active tabs: {message.get('type', 'unknown')}")
-        except Exception as e:
-            debug_log(f"Broadcast failed: {e}")
-
     def start_server(self):
         """Start Web server (supports parallel init)."""
 
@@ -405,14 +290,7 @@ class WebUIManager:
             while retry_count < max_retries:
                 try:
                     if not PortManager.is_port_available(self.host, self.port):
-                        debug_log(f"Port {self.port} in use, searching for alternative")
-
                         process_info = PortManager.find_process_using_port(self.port)
-                        if process_info:
-                            debug_log(
-                                f"Port {self.port} used by {process_info['name']} "
-                                f"(PID: {process_info['pid']})"
-                            )
 
                         try:
                             new_port = PortManager.find_free_port_enhanced(
@@ -420,10 +298,9 @@ class WebUIManager:
                                 auto_cleanup=False,
                                 host=self.host,
                             )
-                            debug_log(f"Switched port: {self.port} -> {new_port}")
                             self.port = new_port
                         except RuntimeError as port_error:
-                            error_id = ErrorHandler.log_error_with_context(
+                            ErrorHandler.log_error_with_context(
                                 port_error,
                                 context={
                                     "operation": "port_lookup",
@@ -432,16 +309,9 @@ class WebUIManager:
                                 },
                                 error_type=ErrorType.NETWORK,
                             )
-                            debug_log(
-                                f"No available port [error_id: {error_id}]: {port_error}"
-                            )
                             raise RuntimeError(
                                 f"No available port, original {original_port} in use"
                             ) from port_error
-
-                    debug_log(
-                        f"Starting server at {self.host}:{self.port} (attempt {retry_count + 1}/{max_retries})"
-                    )
 
                     config = uvicorn.Config(
                         app=self.app,
@@ -462,26 +332,17 @@ class WebUIManager:
 
                     asyncio.run(serve_with_async_init())
 
-                    if self.port != original_port:
-                        debug_log(
-                            f"Server started on alternate port {self.port} (original {original_port} in use)"
-                        )
-
                     break
 
                 except OSError as e:
                     if e.errno in {10048, 98}:
                         retry_count += 1
                         if retry_count < max_retries:
-                            debug_log(
-                                f"Port {self.port} startup failed (OSError), trying next"
-                            )
                             self.port = self.port + 1
                         else:
-                            debug_log("Max retries reached, server startup failed")
                             break
                     else:
-                        error_id = ErrorHandler.log_error_with_context(
+                        ErrorHandler.log_error_with_context(
                             e,
                             context={
                                 "operation": "server_startup",
@@ -490,10 +351,9 @@ class WebUIManager:
                             },
                             error_type=ErrorType.NETWORK,
                         )
-                        debug_log(f"Server startup error [error_id: {error_id}]: {e}")
                         break
                 except Exception as e:
-                    error_id = ErrorHandler.log_error_with_context(
+                    ErrorHandler.log_error_with_context(
                         e,
                         context={
                             "operation": "server_run",
@@ -502,7 +362,6 @@ class WebUIManager:
                         },
                         error_type=ErrorType.SYSTEM,
                     )
-                    debug_log(f"Server run error [error_id: {error_id}]: {e}")
                     break
 
         self.server_thread = threading.Thread(target=run_server_with_retry, daemon=True)
@@ -515,9 +374,8 @@ class WebUIManager:
         try:
             browser_opener = get_browser_opener()
             browser_opener(url)
-            debug_log(f"Opened browser: {url}")
         except Exception as e:
-            debug_log(f"Failed to open browser: {e}")
+            print(str(e), file=sys.stderr)
 
     async def smart_open_browser(self, url: str) -> bool:
         """Open browser; reuse existing tab if active.
@@ -529,41 +387,15 @@ class WebUIManager:
             has_active_tabs = await self._check_active_tabs()
 
             if has_active_tabs:
-                debug_log("Active tabs detected, sending refresh")
-                debug_log(f"Sending refresh to existing tabs: {url}")
-
-                refresh_success = await self.notify_existing_tab_to_refresh()
-
-                debug_log(f"Refresh result: {refresh_success}")
-                debug_log("Active tabs detected, not opening new window")
+                await self.notify_existing_tab_to_refresh()
                 return True
 
-            debug_log("No active tabs, opening new browser window")
             self.open_browser(url)
             return False
 
         except Exception as e:
-            debug_log(f"Smart open failed, fallback to regular open: {e}")
             self.open_browser(url)
             return False
-
-    async def _safe_close_websocket(self, websocket):
-        """Safely close WebSocket (only after connection transferred)."""
-        if not websocket:
-            return
-
-        try:
-            if (
-                hasattr(websocket, "client_state")
-                and websocket.client_state.DISCONNECTED
-            ):
-                debug_log("WebSocket disconnected, skip close")
-                return
-
-            debug_log("WebSocket transferred to new session, skip close")
-
-        except Exception as e:
-            debug_log(f"Error checking WebSocket state: {e}")
 
     async def notify_existing_tab_to_refresh(self) -> bool:
         """Notify existing tabs to refresh for new session.
@@ -573,7 +405,6 @@ class WebUIManager:
         """
         try:
             if not self.current_session or not self.current_session.websocket:
-                debug_log("No active WebSocket, cannot send refresh")
                 return False
 
             refresh_message = {
@@ -589,30 +420,25 @@ class WebUIManager:
             }
 
             await self.current_session.websocket.send_json(refresh_message)
-            debug_log(f"Refresh sent to existing tabs: {self.current_session.session_id}")
 
             await asyncio.sleep(0.2)
-            debug_log("Refresh notification sent")
             return True
 
         except Exception as e:
-            debug_log(f"Send refresh failed: {e}")
             return False
 
     async def _check_active_tabs(self) -> bool:
         """Check for active tabs (layered detection)."""
         try:
             if not self.current_session or not self.current_session.websocket:
-                debug_log("Quick check: no session or WebSocket")
                 return False
 
             last_heartbeat = getattr(self.current_session, "last_heartbeat", None)
             if last_heartbeat:
                 heartbeat_age = time.time() - last_heartbeat
                 if heartbeat_age > 10:
-                    debug_log(f"Quick check: heartbeat timeout ({heartbeat_age:.1f}s)")
+                    pass
                 else:
-                    debug_log(f"Quick check: heartbeat ok ({heartbeat_age:.1f}s ago)")
                     return True
 
             try:
@@ -625,26 +451,20 @@ class WebUIManager:
                         if hasattr(starlette.websockets, "WebSocketState"):
                             WebSocketState = starlette.websockets.WebSocketState
                             if websocket.client_state != WebSocketState.CONNECTED:
-                                debug_log(
-                                    f"Check: WebSocket not CONNECTED, state={websocket.client_state}"
-                                )
                                 self.current_session.websocket = None
                                 return False
                     except ImportError:
-                        debug_log("WebSocketState import failed, using fallback")
+                        pass
 
                 await websocket.send_json({"type": "ping", "timestamp": time.time()})
-                debug_log("Check: ping sent, connection active")
                 return True
 
             except Exception as e:
-                debug_log(f"Check: connection test failed - {e}")
                 if self.current_session:
                     self.current_session.websocket = None
                 return False
 
         except Exception as e:
-            debug_log(f"Error checking active connection: {e}")
             return False
 
     def get_server_url(self) -> str:
@@ -674,15 +494,13 @@ class WebUIManager:
                         and self.current_session.session_id == session_id
                     ):
                         self.current_session = None
-                        debug_log("Cleared expired current session")
 
             except Exception as e:
-                error_id = ErrorHandler.log_error_with_context(
+                ErrorHandler.log_error_with_context(
                     e,
                     context={"session_id": session_id, "operation": "cleanup_expired_sessions"},
                     error_type=ErrorType.SYSTEM,
                 )
-                debug_log(f"Cleanup expired session {session_id} failed [error_id: {error_id}]: {e}")
 
         cleanup_duration = time.time() - cleanup_start_time
         self.cleanup_stats.update(
@@ -696,11 +514,6 @@ class WebUIManager:
                 + cleaned_count,
             }
         )
-
-        if cleaned_count > 0:
-            debug_log(
-                f"Cleaned {cleaned_count} expired sessions in {cleanup_duration:.2f}s"
-            )
 
         return cleaned_count
 
@@ -748,16 +561,12 @@ class WebUIManager:
                     and self.current_session.session_id == session_id
                 ):
                     self.current_session = None
-                    debug_log("Cleared current session under memory pressure")
 
             except Exception as e:
-                error_id = ErrorHandler.log_error_with_context(
+                ErrorHandler.log_error_with_context(
                     e,
                     context={"session_id": session_id, "operation": "memory_pressure_cleanup"},
                     error_type=ErrorType.SYSTEM,
-                )
-                debug_log(
-                    f"Memory pressure cleanup {session_id} failed [error_id: {error_id}]: {e}"
                 )
 
         cleanup_duration = time.time() - cleanup_start_time
@@ -776,51 +585,7 @@ class WebUIManager:
             }
         )
 
-        if cleaned_count > 0:
-            debug_log(
-                f"Memory pressure: cleaned {cleaned_count} sessions in {cleanup_duration:.2f}s"
-            )
-
         return cleaned_count
-
-    def get_session_cleanup_stats(self) -> dict:
-        """Get session cleanup statistics."""
-        stats = self.cleanup_stats.copy()
-        stats.update(
-            {
-                "active_sessions": len(self.sessions),
-                "current_session_id": self.current_session.session_id
-                if self.current_session
-                else None,
-                "expired_sessions": sum(
-                    1 for s in self.sessions.values() if s.is_expired()
-                ),
-                "idle_sessions": sum(
-                    1 for s in self.sessions.values() if s.get_idle_time() > 300
-                ),
-                "memory_usage_mb": 0,
-            }
-        )
-
-        try:
-            import psutil
-
-            process = psutil.Process()
-            stats["memory_usage_mb"] = round(
-                process.memory_info().rss / (1024 * 1024), 2
-            )
-        except:
-            pass
-
-        return stats
-
-    def _scan_expired_sessions(self) -> list[str]:
-        """Scan and return expired session IDs."""
-        expired_sessions = []
-        for session_id, session in self.sessions.items():
-            if session.is_expired():
-                expired_sessions.append(session_id)
-        return expired_sessions
 
     def stop(self):
         """Stop Web UI service."""
@@ -831,7 +596,7 @@ class WebUIManager:
             try:
                 session._cleanup_sync_enhanced(CleanupReason.SHUTDOWN)
             except Exception as e:
-                debug_log(f"Session cleanup failed during stop: {e}")
+                print(str(e), file=sys.stderr)
 
         self.sessions.clear()
         self.current_session = None
@@ -849,12 +614,8 @@ class WebUIManager:
             }
         )
 
-        debug_log(
-            f"Stopped service: cleaned {session_count} sessions in {cleanup_duration:.2f}s"
-        )
-
         if self.server_thread is not None and self.server_thread.is_alive():
-            debug_log("Stopping Web UI service")
+            pass
 
 
 _web_ui_manager: WebUIManager | None = None
@@ -895,23 +656,15 @@ async def launch_web_feedback_ui(
     feedback_url = manager.get_server_url()
     has_active_tabs = await manager.smart_open_browser(feedback_url)
 
-    debug_log(f"[DEBUG] Server URL: {feedback_url}")
-
-    if has_active_tabs:
-        debug_log("Active tabs detected, session update notification sent")
-
     try:
         result = await session.wait_for_feedback(timeout)
-        debug_log("Received user feedback")
         return result
     except TimeoutError:
-        debug_log("Session timeout")
         raise
     except Exception as e:
-        debug_log(f"Session error: {e}")
         raise
     finally:
-        debug_log("Session kept active for next MCP call")
+        pass
 
 
 def stop_web_ui():
@@ -920,7 +673,6 @@ def stop_web_ui():
     if _web_ui_manager:
         _web_ui_manager.stop()
         _web_ui_manager = None
-        debug_log("Web UI service stopped")
 
 
 if __name__ == "__main__":
@@ -964,23 +716,17 @@ element.innerHTML = renderedContent;
 
 **Status**: OK"""
 
-            from ..debug import debug_log
-
-            debug_log("Starting Web UI test...")
-            debug_log(f"Project dir: {project_dir}")
-            debug_log("Waiting for user feedback...")
-
             result = await launch_web_feedback_ui(project_dir, summary)
 
-            debug_log("Received feedback result:")
-            debug_log(f"Command logs: {result.get('logs', '')}")
-            debug_log(f"Interactive feedback: {result.get('interactive_feedback', '')}")
-            debug_log(f"Images count: {len(result.get('images', []))}")
+            print("Received feedback result:")
+            print(f"Command logs: {result.get('logs', '')}")
+            print(f"Interactive feedback: {result.get('interactive_feedback', '')}")
+            print(f"Images count: {len(result.get('images', []))}")
 
         except KeyboardInterrupt:
-            debug_log("\nUser cancelled")
+            print("\nUser cancelled")
         except Exception as e:
-            debug_log(f"Error: {e}")
+            print(f"Error: {e}")
         finally:
             stop_web_ui()
 
