@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,12 +15,13 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoSubmitEnabled = false;
-  int _autoSubmitTimeout = 30;
+  int _autoSubmitTimeout = AutoSubmitService.defaultTimeout;
   String? _autoSubmitPrompt;
 
   List<String> _prompts = [];
   final _promptController = TextEditingController();
   final _timeoutController = TextEditingController();
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -28,6 +31,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _promptController.dispose();
     _timeoutController.dispose();
     super.dispose();
@@ -38,7 +42,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() {
       _autoSubmitEnabled = prefs.getBool('auto_submit_enabled') ?? false;
-      _autoSubmitTimeout = prefs.getInt('auto_submit_timeout') ?? 30;
+      _autoSubmitTimeout =
+          prefs.getInt('auto_submit_timeout') ??
+          AutoSubmitService.defaultTimeout;
       _autoSubmitPrompt = prefs.getString('auto_submit_prompt');
       _prompts = prefs.getStringList('prompts') ?? [];
       _timeoutController.text = _autoSubmitTimeout.toString();
@@ -139,13 +145,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   value: null,
                   child: Text('None', style: tt.bodySmall),
                 ),
-                ..._prompts.map((p) => DropdownMenuItem(
-                  value: p,
-                  child: Text(
-                    p.length > 50 ? '${p.substring(0, 50)}...' : p,
-                    style: tt.bodyMedium,
+                ..._prompts.map(
+                  (p) => DropdownMenuItem(
+                    value: p,
+                    child: Text(
+                      p.length > 50 ? '${p.substring(0, 50)}...' : p,
+                      style: tt.bodyMedium,
+                    ),
                   ),
-                )),
+                ),
               ],
               onChanged: (v) {
                 setState(() => _autoSubmitPrompt = v);
@@ -250,7 +258,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 color: AppColors.accent.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(3),
               ),
-              child: Text('Auto', style: tt.labelSmall?.copyWith(color: AppColors.accent)),
+              child: Text(
+                'Auto',
+                style: tt.labelSmall?.copyWith(color: AppColors.accent),
+              ),
             ),
           const SizedBox(width: 4),
           IconButton(
@@ -277,7 +288,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               });
               _saveSettings();
             },
-            icon: const Icon(Icons.delete_outline, size: 16, color: AppColors.error),
+            icon: const Icon(
+              Icons.delete_outline,
+              size: 16,
+              color: AppColors.error,
+            ),
             tooltip: 'Delete',
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             padding: EdgeInsets.zero,
@@ -337,11 +352,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             textAlign: TextAlign.center,
             style: tt.bodyMedium,
             decoration: const InputDecoration(isDense: true),
-            onSubmitted: (text) {
+            onChanged: (text) {
+              _debounce?.cancel();
               final n = int.tryParse(text);
-              if (n != null && n >= min && n <= max) {
+              if (n == null || n < min || n > max) return;
+              _debounce = Timer(const Duration(milliseconds: 500), () {
                 onChanged(n);
-              }
+              });
             },
           ),
         ),

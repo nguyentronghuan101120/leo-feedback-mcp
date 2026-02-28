@@ -5,10 +5,10 @@
       "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
     },
     "leo-feedback-mcp": {
-      "command": "uv",
-      "args": ["run", "--directory", "/Users/leonguyen/Desktop/leo-feedback-mcp", "leo-feedback-mcp"],
-      "timeout": 300,
-      "autoApprove": ["interactive_feedback", "interactive_feedback_response", "leo_feedback_mcp"]
+      "command": "uvx",
+      "args": ["leo-feedback-mcp"],
+      "timeout": 180,
+      "autoApprove": ["interactive_feedback"]
     },
     "dart": {
       "type": "stdio",

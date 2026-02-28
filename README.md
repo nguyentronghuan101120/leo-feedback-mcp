@@ -67,7 +67,7 @@ MCP configuration (`.cursor/mcp.json`):
     "leo-feedback-mcp": {
       "command": "uvx",
       "args": ["leo-feedback-mcp"],
-      "timeout": 300,
+      "timeout": 180,
       "autoApprove": ["interactive_feedback", "leo-feedback-mcp"]
     }
   }
@@ -96,7 +96,7 @@ MCP configuration (`.cursor/mcp.json`):
         "<path-to-leo-feedback-mcp>",
         "leo-feedback-mcp"
       ],
-      "timeout": 300,
+      "timeout": 180,
       "autoApprove": ["interactive_feedback", "leo-feedback-mcp"]
     }
   }

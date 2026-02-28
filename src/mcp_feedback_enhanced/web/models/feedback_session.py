@@ -50,7 +50,7 @@ class CleanupReason(Enum):
     SHUTDOWN = "shutdown"
 
 
-MAX_IMAGE_SIZE = 1 * 1024 * 1024  # 1MB limit
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB limit
 SUPPORTED_IMAGE_TYPES = {
     "image/png",
     "image/jpeg",

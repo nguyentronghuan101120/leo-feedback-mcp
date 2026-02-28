@@ -45,23 +45,58 @@ class FeedbackPanelState extends State<FeedbackPanel> {
 
   late final JSFunction _globalDragOverHandler;
   late final JSFunction _globalDropHandler;
+  late final JSFunction _globalPasteHandler;
 
   static const _imageTypes = {
-    'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp'
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/webp',
+    'image/bmp',
   };
+
+  static const _maxImages = 10;
+  static const _maxImageBytes = 5 * 1024 * 1024; // 5MB
 
   @override
   void initState() {
     super.initState();
     _controller.addListener(_onTextChanged);
     _setupGlobalDropPrevention();
+    _setupClipboardPaste();
   }
 
   void _setupGlobalDropPrevention() {
-    _globalDragOverHandler = ((web.Event e) { e.preventDefault(); }).toJS;
-    _globalDropHandler = ((web.Event e) { e.preventDefault(); }).toJS;
+    _globalDragOverHandler = ((web.Event e) {
+      e.preventDefault();
+    }).toJS;
+    _globalDropHandler = ((web.Event e) {
+      e.preventDefault();
+    }).toJS;
     web.document.addEventListener('dragover', _globalDragOverHandler);
     web.document.addEventListener('drop', _globalDropHandler);
+  }
+
+  void _setupClipboardPaste() {
+    _globalPasteHandler = ((web.Event e) {
+      if (_isDisabled) return;
+      final clipboardEvent = e as web.ClipboardEvent;
+      final clipboardData = clipboardEvent.clipboardData;
+      if (clipboardData == null) return;
+
+      final items = clipboardData.items;
+      for (var i = 0; i < items.length; i++) {
+        final item = items[i];
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          final file = item.getAsFile();
+          if (file != null) {
+            _readFile(file);
+          }
+        }
+      }
+    }).toJS;
+    web.document.addEventListener('paste', _globalPasteHandler);
   }
 
   void _onTextChanged() {
@@ -103,6 +138,7 @@ class FeedbackPanelState extends State<FeedbackPanel> {
   void dispose() {
     web.document.removeEventListener('dragover', _globalDragOverHandler);
     web.document.removeEventListener('drop', _globalDropHandler);
+    web.document.removeEventListener('paste', _globalPasteHandler);
     _typingDebounce?.cancel();
     _submitResetTimer?.cancel();
     _controller.dispose();
@@ -119,11 +155,11 @@ class FeedbackPanelState extends State<FeedbackPanel> {
       _hasSubmitted = true;
     });
 
-    final imageData = _images.map((img) => {
-      'name': img.name,
-      'data': img.base64Data,
-      'size': img.size,
-    }).toList();
+    final imageData = _images
+        .map(
+          (img) => {'name': img.name, 'data': img.base64Data, 'size': img.size},
+        )
+        .toList();
 
     widget.onSubmit(FeedbackData(text: text, images: imageData));
 
@@ -148,39 +184,56 @@ class FeedbackPanelState extends State<FeedbackPanel> {
     input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/bmp';
     input.multiple = true;
 
-    input.addEventListener('change', (web.Event event) {
-      final files = input.files;
-      if (files != null) {
-        for (var i = 0; i < files.length; i++) {
-          final file = files.item(i);
-          if (file != null) {
-            _readFile(file);
+    input.addEventListener(
+      'change',
+      (web.Event event) {
+        final files = input.files;
+        if (files != null) {
+          for (var i = 0; i < files.length; i++) {
+            final file = files.item(i);
+            if (file != null) {
+              _readFile(file);
+            }
           }
         }
-      }
-    }.toJS);
+      }.toJS,
+    );
 
     input.click();
   }
 
+  bool _isDuplicate(String name, int size) {
+    return _images.any((img) => img.name == name && img.size == size);
+  }
+
   void _readFile(web.File file) {
+    if (_images.length >= _maxImages) return;
+    if (file.size > _maxImageBytes) return;
+
     final reader = web.FileReader();
-    reader.addEventListener('load', (web.Event event) {
-      if (!mounted) return;
-      final result = reader.result;
-      if (result != null) {
-        final dataUrl = (result as JSString).toDart;
-        final base64 = dataUrl.split(',').last;
-        setState(() {
-          _images.add(_ImageAttachment(
-            name: file.name,
-            base64Data: base64,
-            size: file.size,
-            dataUrl: dataUrl,
-          ));
-        });
-      }
-    }.toJS);
+    reader.addEventListener(
+      'load',
+      (web.Event event) {
+        if (!mounted) return;
+        final result = reader.result;
+        if (result != null) {
+          final dataUrl = (result as JSString).toDart;
+          final base64 = dataUrl.split(',').last;
+          if (_isDuplicate(file.name, file.size)) return;
+          if (_images.length >= _maxImages) return;
+          setState(() {
+            _images.add(
+              _ImageAttachment(
+                name: file.name,
+                base64Data: base64,
+                size: file.size,
+                dataUrl: dataUrl,
+              ),
+            );
+          });
+        }
+      }.toJS,
+    );
     reader.readAsDataURL(file);
   }
 
@@ -233,12 +286,14 @@ class FeedbackPanelState extends State<FeedbackPanel> {
     if (pos >= 0) {
       _controller.text =
           '${text.substring(0, pos)}$insert${text.substring(pos)}';
-      _controller.selection =
-          TextSelection.collapsed(offset: pos + insert.length);
+      _controller.selection = TextSelection.collapsed(
+        offset: pos + insert.length,
+      );
     } else {
       _controller.text = text.isEmpty ? insert : '$text\n$insert';
-      _controller.selection =
-          TextSelection.collapsed(offset: _controller.text.length);
+      _controller.selection = TextSelection.collapsed(
+        offset: _controller.text.length,
+      );
     }
   }
 
@@ -262,7 +317,11 @@ class FeedbackPanelState extends State<FeedbackPanel> {
                   children: [
                     _buildTextInput(context),
                     const SizedBox(height: 8),
-                    _buildActionButtons(context),
+                    OutlinedButton.icon(
+                      onPressed: _copyUserContent,
+                      icon: const Icon(Icons.content_copy, size: 14),
+                      label: const Text('Copy User Content'),
+                    ),
                     const SizedBox(height: 12),
                     _buildImageUpload(context),
                     if (_images.isNotEmpty) ...[
@@ -304,21 +363,31 @@ class FeedbackPanelState extends State<FeedbackPanel> {
     final isSubmitted = _isDisabled;
 
     return ElevatedButton.icon(
-      onPressed: (_isSubmitting || isSubmitted || (!_hasContent && _images.isEmpty))
+      onPressed:
+          (_isSubmitting || isSubmitted || (!_hasContent && _images.isEmpty))
           ? null
           : _handleSubmit,
       icon: _isSubmitting
           ? const SizedBox(
               width: 14,
               height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
             )
           : Icon(isSubmitted ? Icons.check : Icons.check_circle, size: 14),
       label: Text(
-        _isSubmitting ? 'Submitting...' : isSubmitted ? 'Submitted' : 'Submit Feedback',
+        _isSubmitting
+            ? 'Submitting...'
+            : isSubmitted
+            ? 'Submitted'
+            : 'Submit Feedback',
       ),
       style: ElevatedButton.styleFrom(
-        backgroundColor: isSubmitted || _isSubmitting ? AppColors.textSecondary : AppColors.success,
+        backgroundColor: isSubmitted || _isSubmitting
+            ? AppColors.textSecondary
+            : AppColors.success,
         padding: const EdgeInsets.symmetric(horizontal: 12),
       ),
     );
@@ -327,70 +396,88 @@ class FeedbackPanelState extends State<FeedbackPanel> {
   Widget _buildTextInput(BuildContext context) {
     final tt = Theme.of(context).textTheme;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Text Feedback', style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w500)),
-        const SizedBox(height: 6),
-        CallbackShortcuts(
-          bindings: {
-            const SingleActivator(LogicalKeyboardKey.enter, control: true): _handleSubmit,
-            const SingleActivator(LogicalKeyboardKey.enter, meta: true): _handleSubmit,
-          },
-          child: TextField(
-            controller: _controller,
-            focusNode: _focusNode,
-            maxLines: null,
-            minLines: 8,
-            enabled: !_isDisabled,
-            style: tt.bodyMedium?.copyWith(fontFamily: 'monospace'),
-            decoration: const InputDecoration(
-              hintText: 'Please enter your feedback here...\n\nTips:\n• Press Ctrl+Enter / Cmd+Enter for quick submit',
-              hintMaxLines: 5,
-            ),
-          ),
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.enter, control: true):
+            _handleSubmit,
+        const SingleActivator(LogicalKeyboardKey.enter, meta: true):
+            _handleSubmit,
+      },
+      child: TextField(
+        controller: _controller,
+        focusNode: _focusNode,
+        maxLines: 20,
+        enabled: !_isDisabled,
+        style: tt.bodyMedium?.copyWith(fontFamily: 'monospace'),
+        decoration: const InputDecoration(
+          hintText:
+              'Please enter your feedback here...\n\nTips:\n• Press Ctrl+Enter / Cmd+Enter for quick submit\n• Paste images with Ctrl+V / Cmd+V',
+          hintMaxLines: 6,
         ),
-      ],
-    );
-  }
-
-  Widget _buildActionButtons(BuildContext context) {
-    return Row(
-      children: [
-        OutlinedButton.icon(
-          onPressed: _copyUserContent,
-          icon: const Icon(Icons.content_copy, size: 14),
-          label: const Text('Copy User Content'),
-        ),
-      ],
+      ),
     );
   }
 
   Widget _buildImageUpload(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final atLimit = _images.length >= _maxImages;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Image Attachments (Optional)', style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w500)),
+        Row(
+          children: [
+            Text(
+              'Image Attachments (Optional)',
+              style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w500),
+            ),
+            if (_images.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Text(
+                '${_images.length}/$_maxImages',
+                style: tt.labelSmall?.copyWith(
+                  color: atLimit ? AppColors.warning : AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ],
+        ),
         const SizedBox(height: 6),
         GestureDetector(
-          onTap: _isDisabled ? null : _pickImages,
+          onTap: (_isDisabled || atLimit) ? null : _pickImages,
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 16),
             decoration: BoxDecoration(
               color: AppColors.bgPrimary,
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(
+                color: atLimit ? AppColors.warning : AppColors.border,
+              ),
             ),
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.add_photo_alternate_outlined, color: AppColors.textSecondary),
+                  Icon(
+                    atLimit
+                        ? Icons.block
+                        : Icons.add_photo_alternate_outlined,
+                    color: atLimit
+                        ? AppColors.warning
+                        : AppColors.textSecondary,
+                  ),
                   const SizedBox(height: 4),
-                  Text('Click to select images', style: tt.bodySmall),
-                  Text('Supports PNG, JPG, GIF, WebP, BMP', style: tt.labelSmall),
+                  Text(
+                    atLimit
+                        ? 'Maximum $_maxImages images reached'
+                        : 'Click to select or paste images',
+                    style: tt.bodySmall,
+                  ),
+                  if (!atLimit)
+                    Text(
+                      'PNG, JPG, GIF, WebP, BMP • Max 5MB • Ctrl+V to paste',
+                      style: tt.labelSmall,
+                    ),
                 ],
               ),
             ),
@@ -430,7 +517,11 @@ class FeedbackPanelState extends State<FeedbackPanel> {
                       color: AppColors.error,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.close, size: 12, color: Colors.white),
+                    child: const Icon(
+                      Icons.close,
+                      size: 12,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
@@ -522,8 +613,10 @@ class _DropZoneState extends State<_DropZone> {
   void dispose() {
     final body = web.document.body;
     if (body != null) {
-      if (_dragEnterHandler != null) body.removeEventListener('dragenter', _dragEnterHandler!);
-      if (_dragLeaveHandler != null) body.removeEventListener('dragleave', _dragLeaveHandler!);
+      if (_dragEnterHandler != null)
+        body.removeEventListener('dragenter', _dragEnterHandler!);
+      if (_dragLeaveHandler != null)
+        body.removeEventListener('dragleave', _dragLeaveHandler!);
       if (_dropHandler != null) body.removeEventListener('drop', _dropHandler!);
     }
     super.dispose();
@@ -546,13 +639,17 @@ class _DropZoneState extends State<_DropZone> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.file_download, size: 48, color: AppColors.accent),
+                    const Icon(
+                      Icons.file_download,
+                      size: 48,
+                      color: AppColors.accent,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       'Drop files here',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: AppColors.accent,
-                          ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleSmall?.copyWith(color: AppColors.accent),
                     ),
                     const SizedBox(height: 4),
                     Text(

@@ -3,8 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AutoSubmitService extends ChangeNotifier {
+  static const defaultTimeout = 120;
+
   bool _enabled = false;
-  int _timeoutSeconds = 30;
+  int _timeoutSeconds = defaultTimeout;
   String? _prompt;
   int _remaining = 0;
   Timer? _timer;
@@ -25,7 +27,7 @@ class AutoSubmitService extends ChangeNotifier {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _enabled = prefs.getBool('auto_submit_enabled') ?? false;
-    _timeoutSeconds = prefs.getInt('auto_submit_timeout') ?? 30;
+    _timeoutSeconds = prefs.getInt('auto_submit_timeout') ?? defaultTimeout;
     _prompt = prefs.getString('auto_submit_prompt');
     notifyListeners();
   }

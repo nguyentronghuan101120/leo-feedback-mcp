@@ -1,6 +1,6 @@
 [project]
 name = "leo-feedback-mcp"
-version = "1.0.3"
+version = "1.0.4"
 description = "Interactive MCP feedback server with Flutter Web UI for AI-assisted development. Collect user feedback, images, and manage sessions in real-time."
 readme = "README.md"
 requires-python = ">=3.11"

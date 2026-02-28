@@ -293,41 +293,36 @@ class _SessionsScreenState extends State<SessionsScreen> {
         children: [
           Container(
             width: double.infinity,
-            constraints: const BoxConstraints(maxHeight: 200),
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: AppColors.bgTertiary,
               borderRadius: BorderRadius.circular(6),
               border: Border.all(color: AppColors.border),
             ),
-            child: Scrollbar(
-              child: SingleChildScrollView(
-                child: MarkdownBody(
-                  data: session.summary.isNotEmpty
-                      ? session.summary
-                      : '_No summary_',
-                  onTapLink: (text, href, title) {
-                    if (href != null && href.isNotEmpty) {
-                      web.window.open(href, '_blank');
-                    }
-                  },
-                  styleSheet: MarkdownStyleSheet(
-                    p: tt.bodySmall?.copyWith(color: AppColors.textPrimary),
-                    h1: tt.titleMedium,
-                    h2: tt.titleSmall,
-                    h3: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                    code: tt.bodySmall?.copyWith(
-                      fontFamily: 'monospace',
-                      color: AppColors.accent,
-                      backgroundColor: AppColors.surface,
-                    ),
-                    codeblockDecoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    listBullet: tt.bodySmall,
-                  ),
+            child: MarkdownBody(
+              data: session.summary.isNotEmpty
+                  ? session.summary
+                  : '_No summary_',
+              onTapLink: (text, href, title) {
+                if (href != null && href.isNotEmpty) {
+                  web.window.open(href, '_blank');
+                }
+              },
+              styleSheet: MarkdownStyleSheet(
+                p: tt.bodySmall?.copyWith(color: AppColors.textPrimary),
+                h1: tt.titleMedium,
+                h2: tt.titleSmall,
+                h3: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                code: tt.bodySmall?.copyWith(
+                  fontFamily: 'monospace',
+                  color: AppColors.accent,
+                  backgroundColor: AppColors.surface,
                 ),
+                codeblockDecoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                listBullet: tt.bodySmall,
               ),
             ),
           ),
