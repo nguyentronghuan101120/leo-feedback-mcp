@@ -59,7 +59,7 @@ SUPPORTED_IMAGE_TYPES = {
     "image/bmp",
     "image/webp",
 }
-TEMP_DIR = Path.home() / ".cache" / "interactive-feedback-mcp-web"
+TEMP_DIR = Path.home() / ".cache" / "leo-feedback-mcp"
 
 def _safe_parse_command(command: str) -> list[str]:
     """
@@ -316,9 +316,10 @@ class WebFeedbackSession:
                 if not self._cleanup_done and self.is_expired():
                     debug_log(f"Session {self.session_id} auto cleanup (expired)")
                     try:
-                        loop = asyncio.get_event_loop()
-                        loop.create_task(
-                            self._cleanup_resources_enhanced(CleanupReason.EXPIRED)
+                        loop = asyncio.get_running_loop()
+                        asyncio.run_coroutine_threadsafe(
+                            self._cleanup_resources_enhanced(CleanupReason.EXPIRED),
+                            loop,
                         )
                     except RuntimeError:
                         self._cleanup_sync_enhanced(CleanupReason.EXPIRED)
@@ -340,16 +341,15 @@ class WebFeedbackSession:
         )
 
     def extend_cleanup_timer(self, additional_time: int | None = None):
-        """Extend cleanup timer."""
+        """Extend cleanup timer by rescheduling auto cleanup."""
         if additional_time is None:
             additional_time = self.auto_cleanup_delay
 
         if self.cleanup_timer:
             self.cleanup_timer.cancel()
 
-        self.cleanup_timer = threading.Timer(additional_time, lambda: None)
-        self.cleanup_timer.daemon = True
-        self.cleanup_timer.start()
+        self.auto_cleanup_delay = additional_time
+        self._schedule_auto_cleanup()
 
         debug_log(f"Session {self.session_id} cleanup timer extended by {additional_time}s")
 
@@ -404,6 +404,7 @@ class WebFeedbackSession:
                 self.feedback_completed.set()
 
             self.user_timeout_timer = threading.Timer(timeout_seconds, timeout_handler)
+            self.user_timeout_timer.daemon = True
             self.user_timeout_timer.start()
             debug_log(f"Started user timeout timer: {timeout_seconds}s")
 
@@ -466,6 +467,11 @@ class WebFeedbackSession:
         settings: dict[str, Any] | None = None,
     ):
         """Submit feedback and images."""
+        if self.is_terminal():
+            debug_log(
+                f"Session {self.session_id} in terminal state {self.status.value}, ignoring feedback"
+            )
+            return
         self.feedback_result = feedback
         self.settings = settings or {}
         self.images = self._process_images(images)
@@ -528,8 +534,11 @@ class WebFeedbackSession:
                     except Exception as e:
                         debug_log(f"Image {img['name']} base64 decode failed: {e}")
                         continue
+                elif isinstance(img["data"], (bytes, bytearray)):
+                    image_bytes = bytes(img["data"])
                 else:
-                    image_bytes = img["data"]
+                    debug_log(f"Image {img['name']} unsupported data type: {type(img['data'])}")
+                    continue
 
                 if len(image_bytes) == 0:
                     debug_log(f"Image {img['name']} empty data, skipped")
@@ -563,10 +572,10 @@ class WebFeedbackSession:
             try:
                 self.process.terminate()
                 self.process.wait(timeout=5)
-            except:
+            except Exception:
                 try:
                     self.process.kill()
-                except:
+                except Exception:
                     pass
             self.process = None
 
@@ -601,12 +610,14 @@ class WebFeedbackSession:
                 auto_cleanup=True,
             )
 
+            proc = self.process
+
             async def read_output():
                 loop = asyncio.get_event_loop()
                 try:
                     def read_line():
-                        if self.process and self.process.stdout:
-                            return self.process.stdout.readline()
+                        if proc and proc.stdout:
+                            return proc.stdout.readline()
                         return ""
 
                     while True:
@@ -627,10 +638,10 @@ class WebFeedbackSession:
                 except Exception as e:
                     debug_log(f"Read command output error: {e}")
                 finally:
-                    if self.process:
-                        exit_code = self.process.wait()
+                    if proc:
+                        exit_code = proc.wait()
 
-                        self.resource_manager.unregister_process(self.process.pid)
+                        self.resource_manager.unregister_process(proc.pid)
 
                         if self.websocket:
                             try:
@@ -649,7 +660,7 @@ class WebFeedbackSession:
                     await self.websocket.send_json(
                         {"type": "command_error", "error": str(e)}
                     )
-                except:
+                except Exception:
                     pass
 
     async def _cleanup_resources_on_timeout(self):
@@ -678,7 +689,7 @@ class WebFeedbackSession:
 
                 process = psutil.Process()
                 memory_before = process.memory_info().rss
-            except:
+            except Exception:
                 pass
 
             if self.cleanup_timer:
@@ -775,7 +786,7 @@ class WebFeedbackSession:
 
                 process = psutil.Process()
                 memory_after = process.memory_info().rss
-            except:
+            except Exception:
                 pass
 
             memory_freed = max(0, memory_before - memory_after)
@@ -838,7 +849,7 @@ class WebFeedbackSession:
 
                 process = psutil.Process()
                 memory_before = process.memory_info().rss
-            except:
+            except Exception:
                 pass
 
             if self.cleanup_timer:
@@ -852,12 +863,12 @@ class WebFeedbackSession:
                     self.process.wait(timeout=5)
                     debug_log(f"Session {self.session_id} command process terminated")
                     resources_cleaned += 1
-                except:
+                except Exception:
                     try:
                         self.process.kill()
                         debug_log(f"Session {self.session_id} command process force killed")
                         resources_cleaned += 1
-                    except:
+                    except Exception:
                         pass
                 self.process = None
 
@@ -901,7 +912,7 @@ class WebFeedbackSession:
 
                 process = psutil.Process()
                 memory_after = process.memory_info().rss
-            except:
+            except Exception:
                 pass
 
             memory_freed = max(0, memory_before - memory_after)
@@ -946,12 +957,11 @@ class WebFeedbackSession:
             return
 
         try:
-            if (
-                hasattr(self.websocket, "client_state")
-                and self.websocket.client_state.DISCONNECTED
-            ):
-                debug_log("WebSocket already disconnected, skip close")
-                return
+            if hasattr(self.websocket, "client_state"):
+                state = self.websocket.client_state
+                if hasattr(state, "name") and state.name == "DISCONNECTED":
+                    debug_log("WebSocket already disconnected, skip close")
+                    return
 
             await asyncio.wait_for(
                 self.websocket.close(code=1000, reason="Session cleanup"), timeout=2.0

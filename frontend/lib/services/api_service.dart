@@ -25,10 +25,13 @@ class ApiService {
   static Future<Map<String, dynamic>?> _get(String path) async {
     try {
       final completer = Completer<Map<String, dynamic>?>();
+      bool completed = false;
       final request = web.XMLHttpRequest();
       request.open('GET', '$_baseUrl$path');
       request.setRequestHeader('Content-Type', 'application/json');
       request.onLoad.listen((_) {
+        if (completed) return;
+        completed = true;
         if (request.status == 200) {
           try {
             final text = request.responseText;
@@ -48,11 +51,23 @@ class ApiService {
         }
       });
       request.onError.listen((_) {
+        if (completed) return;
+        completed = true;
         debugPrint('API network error ($path)');
         completer.complete(null);
       });
       request.send();
-      return completer.future;
+      return completer.future.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          if (!completed) {
+            completed = true;
+            request.abort();
+            debugPrint('API timeout ($path)');
+          }
+          return null;
+        },
+      );
     } catch (e) {
       debugPrint('API request failed ($path): $e');
       return null;
@@ -68,12 +83,17 @@ class ApiService {
     try {
       final request = web.XMLHttpRequest();
       final completer = Completer<bool>();
+      bool completed = false;
       request.open('POST', '$_baseUrl/api/save-session-history');
       request.setRequestHeader('Content-Type', 'application/json');
       request.onLoad.listen((_) {
+        if (completed) return;
+        completed = true;
         completer.complete(request.status == 200);
       });
       request.onError.listen((_) {
+        if (completed) return;
+        completed = true;
         debugPrint('API network error (save-session-history)');
         completer.complete(false);
       });
@@ -81,7 +101,17 @@ class ApiService {
         'sessions': sessions,
         'lastCleanup': lastCleanup,
       }).toJS);
-      return completer.future;
+      return completer.future.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          if (!completed) {
+            completed = true;
+            request.abort();
+            debugPrint('API timeout (save-session-history)');
+          }
+          return false;
+        },
+      );
     } catch (e) {
       debugPrint('API request failed (save-session-history): $e');
       return false;

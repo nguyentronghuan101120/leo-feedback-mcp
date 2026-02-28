@@ -181,9 +181,10 @@ class WebSocketService extends ChangeNotifier {
     if (_reconnectAttempts >= _maxReconnectAttempts) return;
     _reconnectTimer?.cancel();
     final delay = Duration(seconds: (_reconnectAttempts + 1) * 2);
-    _reconnectTimer = Timer(delay, () {
+    _reconnectTimer = Timer(delay, () async {
       if (_disposed) return;
       _reconnectAttempts++;
+      await _fetchInitialData();
       final wsUrl = _buildWsUrl();
       connect(wsUrl);
     });
@@ -208,16 +209,21 @@ class WebSocketService extends ChangeNotifier {
     }
   }
 
-  void submitFeedback({
+  bool submitFeedback({
     required String feedback,
     List<Map<String, dynamic>>? images,
   }) {
+    if (_channel == null || _connectionState != WsConnectionState.connected) {
+      debugPrint('Cannot submit feedback: WebSocket not connected');
+      return false;
+    }
     _sendMessage({
       'type': 'submit_feedback',
       'feedback': feedback,
       'images': images ?? [],
       'settings': {},
     });
+    return true;
   }
 
   void runCommand(String command) {

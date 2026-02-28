@@ -25,13 +25,15 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     final ws = context.read<WebSocketService>();
     final prompt = autoSubmit.prompt;
     if (prompt == null || prompt.isEmpty) return;
-    ws.submitFeedback(feedback: prompt);
-    _feedbackKey.currentState?.clearFeedback();
-    if (ws.sessionId != null) {
-      context.read<SessionHistoryService>().onFeedbackSubmitted(
-            ws.sessionId!,
-            prompt,
-          );
+    final sent = ws.submitFeedback(feedback: prompt);
+    if (sent) {
+      _feedbackKey.currentState?.clearFeedback();
+      if (ws.sessionId != null) {
+        context.read<SessionHistoryService>().onFeedbackSubmitted(
+              ws.sessionId!,
+              prompt,
+            );
+      }
     }
   }
 
@@ -72,15 +74,23 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             feedbackSubmitted: ws.feedbackSubmitted,
             onSubmit: (data) {
               autoSubmit.cancel();
-              ws.submitFeedback(
+              final sent = ws.submitFeedback(
                 feedback: data.text,
                 images: data.images,
               );
-              if (ws.sessionId != null) {
+              if (sent && ws.sessionId != null) {
                 context.read<SessionHistoryService>().onFeedbackSubmitted(
                       ws.sessionId!,
                       data.text,
                     );
+              }
+              if (!sent && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Failed to submit: not connected'),
+                    backgroundColor: Color(0xFFF44336),
+                  ),
+                );
               }
             },
             onTypingStart: autoSubmit.pause,

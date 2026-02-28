@@ -249,9 +249,8 @@ def setup_routes(manager: "WebUIManager"):
         except Exception as e:
             debug_log(f"WebSocket error: {e}")
         finally:
-            current_session = manager.get_current_session()
-            if current_session and current_session.websocket == websocket:
-                current_session.websocket = None
+            if session.websocket == websocket:
+                session.websocket = None
                 debug_log("Cleaned WebSocket from session")
 
     @manager.app.post("/api/save-settings")
@@ -261,7 +260,7 @@ def setup_routes(manager: "WebUIManager"):
         try:
             data = await request.json()
 
-            config_dir = Path.home() / ".config" / "mcp-feedback-enhanced"
+            config_dir = Path.home() / ".config" / "leo-feedback-mcp"
             config_dir.mkdir(parents=True, exist_ok=True)
             settings_file = config_dir / "ui_settings.json"
 
@@ -293,7 +292,7 @@ def setup_routes(manager: "WebUIManager"):
         """Load settings from file."""
 
         try:
-            config_dir = Path.home() / ".config" / "mcp-feedback-enhanced"
+            config_dir = Path.home() / ".config" / "leo-feedback-mcp"
             settings_file = config_dir / "ui_settings.json"
 
             if settings_file.exists():
@@ -321,7 +320,7 @@ def setup_routes(manager: "WebUIManager"):
         """Clear settings file."""
 
         try:
-            config_dir = Path.home() / ".config" / "mcp-feedback-enhanced"
+            config_dir = Path.home() / ".config" / "leo-feedback-mcp"
             settings_file = config_dir / "ui_settings.json"
 
             if settings_file.exists():
@@ -353,7 +352,7 @@ def setup_routes(manager: "WebUIManager"):
         """Load session history from file."""
 
         try:
-            config_dir = Path.home() / ".config" / "mcp-feedback-enhanced"
+            config_dir = Path.home() / ".config" / "leo-feedback-mcp"
             history_file = config_dir / "session_history.json"
 
             if history_file.exists():
@@ -394,7 +393,7 @@ def setup_routes(manager: "WebUIManager"):
         try:
             data = await request.json()
 
-            config_dir = Path.home() / ".config" / "mcp-feedback-enhanced"
+            config_dir = Path.home() / ".config" / "leo-feedback-mcp"
             config_dir.mkdir(parents=True, exist_ok=True)
             history_file = config_dir / "session_history.json"
 
@@ -436,7 +435,7 @@ def setup_routes(manager: "WebUIManager"):
         """Get log level setting."""
 
         try:
-            config_dir = Path.home() / ".config" / "mcp-feedback-enhanced"
+            config_dir = Path.home() / ".config" / "leo-feedback-mcp"
             settings_file = config_dir / "ui_settings.json"
 
             if settings_file.exists():
@@ -477,7 +476,7 @@ def setup_routes(manager: "WebUIManager"):
                     },
                 )
 
-            config_dir = Path.home() / ".config" / "mcp-feedback-enhanced"
+            config_dir = Path.home() / ".config" / "leo-feedback-mcp"
             config_dir.mkdir(parents=True, exist_ok=True)
             settings_file = config_dir / "ui_settings.json"
 

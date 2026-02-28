@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:web/web.dart' as web;
 import '../theme/app_theme.dart';
 
 class AiSummaryPanel extends StatelessWidget {
@@ -37,14 +38,26 @@ class AiSummaryPanel extends StatelessWidget {
 
     return Align(
       alignment: Alignment.topLeft,
-      child: SelectionArea(
-        child: Scrollbar(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(14),
-            child: MarkdownBody(
-              data: summary!,
-              selectable: false,
-              styleSheet: _markdownStyleSheet(context),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          textSelectionTheme: TextSelectionThemeData(
+            selectionColor: AppColors.accent.withValues(alpha: 0.5),
+          ),
+        ),
+        child: SelectionArea(
+          child: Scrollbar(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(14),
+              child: MarkdownBody(
+                data: summary!,
+                selectable: false,
+                styleSheet: _markdownStyleSheet(context),
+                onTapLink: (text, href, title) {
+                  if (href != null && href.isNotEmpty) {
+                    web.window.open(href, '_blank');
+                  }
+                },
+              ),
             ),
           ),
         ),
@@ -61,9 +74,10 @@ class AiSummaryPanel extends StatelessWidget {
       h2: tt.headlineMedium,
       h3: tt.headlineSmall,
       h4: tt.titleMedium,
-      code: tt.bodySmall?.copyWith(
-        backgroundColor: AppColors.surface,
+      code: tt.bodyMedium?.copyWith(
+        backgroundColor: AppColors.surface.withValues(alpha: 0.1),
         fontFamily: 'monospace',
+        color: const Color(0xFFCE9178),
       ),
       codeblockDecoration: BoxDecoration(
         color: AppColors.bgPrimary,
@@ -84,7 +98,11 @@ class AiSummaryPanel extends StatelessWidget {
       horizontalRuleDecoration: const BoxDecoration(
         border: Border(top: BorderSide(color: AppColors.border, width: 1)),
       ),
-      a: const TextStyle(color: AppColors.accent),
+      a: const TextStyle(
+        color: AppColors.accent,
+        decoration: TextDecoration.underline,
+        decorationColor: AppColors.accent,
+      ),
       strong: tt.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
       em: tt.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
       del: tt.bodySmall?.copyWith(decoration: TextDecoration.lineThrough),

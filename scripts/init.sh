@@ -16,5 +16,5 @@ cd ..
 echo ""
 
 echo "Project is ready!"
-echo "  - Python (backend):  uv run mcp-feedback-enhanced"
+echo "  - Python (backend):  uv run leo-feedback-mcp"
 echo "  - Flutter (frontend): cd frontend && flutter run -d chrome"

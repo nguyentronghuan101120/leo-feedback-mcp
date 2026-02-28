@@ -53,14 +53,21 @@ class SessionRecord {
 }
 
 class SessionHistoryService extends ChangeNotifier {
+  static const _maxSessions = 20;
+
   List<SessionRecord> _sessions = [];
   int _lastCleanup = 0;
   bool _loaded = false;
+  bool _loadError = false;
+  bool _persisting = false;
+  bool _pendingPersist = false;
 
   List<SessionRecord> get sessions => List.unmodifiable(_sessions);
   bool get loaded => _loaded;
+  bool get loadError => _loadError;
 
   Future<void> load() async {
+    _loadError = false;
     try {
       final data = await ApiService.loadSessionHistory();
       if (data != null) {
@@ -70,11 +77,14 @@ class SessionHistoryService extends ChangeNotifier {
             .map(SessionRecord.fromJson)
             .toList();
         _lastCleanup = data['lastCleanup'] as int? ?? 0;
+        _trimSessions();
       }
+      _loaded = true;
     } catch (e) {
       debugPrint('Failed to load session history: $e');
+      _loaded = true;
+      _loadError = true;
     }
-    _loaded = true;
     notifyListeners();
   }
 
@@ -96,8 +106,9 @@ class SessionHistoryService extends ChangeNotifier {
         createdAt: DateTime.now().millisecondsSinceEpoch,
       ),
     );
+    _trimSessions();
     notifyListeners();
-    _persist();
+    _debouncedPersist();
   }
 
   void onFeedbackSubmitted(String sessionId, String feedback) {
@@ -108,27 +119,43 @@ class SessionHistoryService extends ChangeNotifier {
     _sessions[idx].status = 'completed';
     _sessions[idx].completedAt = DateTime.now().millisecondsSinceEpoch;
     notifyListeners();
-    _persist();
+    _debouncedPersist();
   }
 
-  Future<void> _persist() async {
+  void _trimSessions() {
+    if (_sessions.length > _maxSessions) {
+      _sessions.removeRange(_maxSessions, _sessions.length);
+    }
+  }
+
+  Future<void> _debouncedPersist() async {
+    if (_persisting) {
+      _pendingPersist = true;
+      return;
+    }
+    _persisting = true;
     try {
       final jsonList = _sessions.map((s) => s.toJson()).toList();
       await ApiService.saveSessionHistory(jsonList, _lastCleanup);
     } catch (e) {
       debugPrint('Failed to persist session history: $e');
     }
+    _persisting = false;
+    if (_pendingPersist) {
+      _pendingPersist = false;
+      _debouncedPersist();
+    }
   }
 
   void removeSession(String sessionId) {
     _sessions.removeWhere((s) => s.sessionId == sessionId);
     notifyListeners();
-    _persist();
+    _debouncedPersist();
   }
 
   void clearAll() {
     _sessions.clear();
     notifyListeners();
-    _persist();
+    _debouncedPersist();
   }
 }

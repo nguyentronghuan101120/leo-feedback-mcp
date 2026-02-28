@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:web/web.dart' as web;
 import '../services/websocket_service.dart';
 import '../services/session_history_service.dart';
 import '../theme/app_theme.dart';
@@ -57,7 +58,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
           if (history.sessions.isNotEmpty)
             IconButton(
               onPressed: () => _confirmClearAll(context),
-              icon: const Icon(Icons.delete_sweep, color: AppColors.textSecondary),
+              icon: const Icon(
+                Icons.delete_sweep,
+                color: AppColors.textSecondary,
+              ),
               tooltip: 'Clear all history',
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               padding: EdgeInsets.zero,
@@ -140,8 +144,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
           InkWell(
             onTap: () {
               setState(() {
-                _expandedSessionId =
-                    isExpanded ? null : session.sessionId;
+                _expandedSessionId = isExpanded ? null : session.sessionId;
               });
             },
             borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
@@ -186,7 +189,11 @@ class _SessionsScreenState extends State<SessionsScreen> {
                           children: [
                             Text(timeStr, style: tt.labelSmall),
                             const SizedBox(width: 8),
-                            _buildStatusBadge(context, session.status, isCurrent),
+                            _buildStatusBadge(
+                              context,
+                              session.status,
+                              isCurrent,
+                            ),
                           ],
                         ),
                       ],
@@ -206,7 +213,11 @@ class _SessionsScreenState extends State<SessionsScreen> {
     );
   }
 
-  Widget _buildStatusBadge(BuildContext context, String status, bool isCurrent) {
+  Widget _buildStatusBadge(
+    BuildContext context,
+    String status,
+    bool isCurrent,
+  ) {
     final tt = Theme.of(context).textTheme;
 
     Color bgColor;
@@ -220,14 +231,27 @@ class _SessionsScreenState extends State<SessionsScreen> {
     } else {
       switch (status) {
         case 'completed':
+        case 'feedback_submitted':
           bgColor = AppColors.success.withValues(alpha: 0.2);
           textColor = AppColors.success;
-          label = 'Completed';
+          label = status == 'completed' ? 'Completed' : 'Submitted';
           break;
         case 'active':
+        case 'waiting':
           bgColor = AppColors.warning.withValues(alpha: 0.2);
           textColor = AppColors.warning;
-          label = 'Active';
+          label = status == 'active' ? 'Active' : 'Waiting';
+          break;
+        case 'error':
+          bgColor = AppColors.error.withValues(alpha: 0.2);
+          textColor = AppColors.error;
+          label = 'Error';
+          break;
+        case 'timeout':
+        case 'expired':
+          bgColor = AppColors.textSecondary.withValues(alpha: 0.2);
+          textColor = AppColors.textSecondary;
+          label = status == 'timeout' ? 'Timeout' : 'Expired';
           break;
         default:
           bgColor = AppColors.surface;
@@ -244,7 +268,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
       ),
       child: Text(
         label,
-        style: tt.labelSmall?.copyWith(color: textColor, fontWeight: FontWeight.w500),
+        style: tt.labelSmall?.copyWith(
+          color: textColor,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }
@@ -264,18 +291,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildDetailRow(context, 'Session ID', session.sessionId),
-          _buildDetailRow(context, 'Project', session.projectDirectory),
-          if (session.completedAt != null)
-            _buildDetailRow(
-              context,
-              'Completed',
-              _formatTime(
-                  DateTime.fromMillisecondsSinceEpoch(session.completedAt!)),
-            ),
-          const SizedBox(height: 12),
-          Text('AI Summary', style: tt.titleSmall),
-          const SizedBox(height: 6),
           Container(
             width: double.infinity,
             constraints: const BoxConstraints(maxHeight: 200),
@@ -291,6 +306,11 @@ class _SessionsScreenState extends State<SessionsScreen> {
                   data: session.summary.isNotEmpty
                       ? session.summary
                       : '_No summary_',
+                  onTapLink: (text, href, title) {
+                    if (href != null && href.isNotEmpty) {
+                      web.window.open(href, '_blank');
+                    }
+                  },
                   styleSheet: MarkdownStyleSheet(
                     p: tt.bodySmall?.copyWith(color: AppColors.textPrimary),
                     h1: tt.titleMedium,
@@ -322,7 +342,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
                 color: AppColors.success.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
-                    color: AppColors.success.withValues(alpha: 0.3)),
+                  color: AppColors.success.withValues(alpha: 0.3),
+                ),
               ),
               child: Text(
                 session.feedback!,
@@ -340,55 +361,27 @@ class _SessionsScreenState extends State<SessionsScreen> {
                 icon: const Icon(Icons.content_copy, size: 14),
                 label: const Text('Copy Summary'),
               ),
-              OutlinedButton.icon(
-                onPressed: () => _copyToClipboard(session.sessionId),
-                icon: const Icon(Icons.copy, size: 14),
-                label: const Text('Copy ID'),
-              ),
               if (!isCurrent)
                 OutlinedButton.icon(
                   onPressed: () {
-                    context
-                        .read<SessionHistoryService>()
-                        .removeSession(session.sessionId);
-                    if (_expandedSessionId == session.sessionId) {
+                    context.read<SessionHistoryService>().removeSession(
+                      session.sessionId,
+                    );
+                    if (mounted && _expandedSessionId == session.sessionId) {
                       setState(() => _expandedSessionId = null);
                     }
                   },
-                  icon: const Icon(Icons.delete_outline, size: 14,
-                      color: AppColors.error),
-                  label: Text('Remove',
-                      style: tt.labelMedium?.copyWith(color: AppColors.error)),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    size: 14,
+                    color: AppColors.error,
+                  ),
+                  label: Text(
+                    'Remove',
+                    style: tt.labelMedium?.copyWith(color: AppColors.error),
+                  ),
                 ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(BuildContext context, String label, String value) {
-    final tt = Theme.of(context).textTheme;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 90,
-            child: Text(label, style: tt.bodySmall),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: tt.bodySmall?.copyWith(
-                color: AppColors.textPrimary,
-                fontFamily: 'monospace',
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
           ),
         ],
       ),
@@ -445,7 +438,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
               historyService.clearAll();
               Navigator.pop(ctx);
             },
-            child: const Text('Clear', style: TextStyle(color: AppColors.error)),
+            child: const Text(
+              'Clear',
+              style: TextStyle(color: AppColors.error),
+            ),
           ),
         ],
       ),

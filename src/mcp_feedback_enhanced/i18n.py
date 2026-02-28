@@ -26,7 +26,7 @@ class I18nManager:
 
     def _get_config_file_path(self) -> Path:
         """Get config file path."""
-        config_dir = Path.home() / ".config" / "mcp-feedback-enhanced"
+        config_dir = Path.home() / ".config" / "leo-feedback-mcp"
         config_dir.mkdir(parents=True, exist_ok=True)
         return config_dir / "language.json"
 

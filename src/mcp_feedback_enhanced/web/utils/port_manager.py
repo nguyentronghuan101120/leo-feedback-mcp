@@ -49,7 +49,7 @@ class PortManager:
 
             debug_log(f"Process {process_name} (PID: {pid}) using port {port}")
 
-            if "mcp-feedback-enhanced" in process_info["cmdline"].lower():
+            if "leo-feedback-mcp" in process_info["cmdline"].lower() or "mcp-feedback-enhanced" in process_info["cmdline"].lower():
                 debug_log("MCP Feedback Enhanced process detected, attempting graceful terminate")
 
             if force:
@@ -158,7 +158,7 @@ class PortManager:
 
         if any(
             keyword in cmdline
-            for keyword in ["mcp-feedback-enhanced", "mcp_feedback_enhanced"]
+            for keyword in ["leo-feedback-mcp", "mcp-feedback-enhanced", "mcp_feedback_enhanced"]
         ):
             return True
 
