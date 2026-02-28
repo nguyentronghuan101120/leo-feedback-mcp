@@ -14,7 +14,7 @@ Features:
 - Audio & browser notifications
 """
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 __author__ = "Leo Nguyen"
 
 import os

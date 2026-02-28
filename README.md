@@ -2,7 +2,6 @@
 
 A customized MCP (Model Context Protocol) server for interactive feedback collection during AI-assisted development. Built with a **Flutter Web** frontend and **Python/FastAPI** backend.
 
-
 ## Features
 
 - **Flutter Web UI** with dark theme for interactive feedback
@@ -68,8 +67,8 @@ MCP configuration (`.cursor/mcp.json`):
     "leo-feedback-mcp": {
       "command": "uvx",
       "args": ["leo-feedback-mcp"],
-      "timeout": 600,
-      "autoApprove": ["interactive_feedback"]
+      "timeout": 300,
+      "autoApprove": ["interactive_feedback", "leo-feedback-mcp"]
     }
   }
 }
@@ -91,9 +90,14 @@ MCP configuration (`.cursor/mcp.json`):
   "mcpServers": {
     "leo-feedback-mcp": {
       "command": "uv",
-      "args": ["run", "--directory", "<path-to-leo-feedback-mcp>", "leo-feedback-mcp"],
-      "timeout": 600,
-      "autoApprove": ["interactive_feedback"]
+      "args": [
+        "run",
+        "--directory",
+        "<path-to-leo-feedback-mcp>",
+        "leo-feedback-mcp"
+      ],
+      "timeout": 300,
+      "autoApprove": ["interactive_feedback", "leo-feedback-mcp"]
     }
   }
 }
@@ -104,6 +108,7 @@ Replace `<path-to-leo-feedback-mcp>` with the actual path to the cloned reposito
 ### Apply configuration
 
 You can place the MCP config in:
+
 - **Project-level**: `.cursor/mcp.json` in your project root
 - **Global**: `~/.cursor/mcp.json` to apply across all projects
 
@@ -121,11 +126,11 @@ Once configured, the AI assistant will automatically call `interactive_feedback`
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MCP_DEBUG` | Enable debug logging | `false` |
-| `MCP_WEB_HOST` | Web UI host | `127.0.0.1` |
-| `MCP_WEB_PORT` | Web UI port | `8765` |
+| Variable       | Description          | Default     |
+| -------------- | -------------------- | ----------- |
+| `MCP_DEBUG`    | Enable debug logging | `false`     |
+| `MCP_WEB_HOST` | Web UI host          | `127.0.0.1` |
+| `MCP_WEB_PORT` | Web UI port          | `8765`      |
 
 ## Credits
 
