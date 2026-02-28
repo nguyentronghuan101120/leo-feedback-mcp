@@ -1,3 +1,0 @@
-"""
-Test helper utilities module.
-"""

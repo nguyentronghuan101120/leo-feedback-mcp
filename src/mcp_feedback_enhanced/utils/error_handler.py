@@ -3,7 +3,6 @@ Unified error handling: classification, user-friendly messages,
 context logging, solution suggestions. Does not affect JSON RPC.
 """
 
-import os
 import time
 import traceback
 import sys
@@ -39,102 +38,45 @@ class ErrorHandler:
     """Unified error handler."""
 
     _ERROR_MESSAGES = {
-        ErrorType.NETWORK: {"en": "Network connection issue"},
-        ErrorType.FILE_IO: {"en": "File read/write issue"},
-        ErrorType.PROCESS: {"en": "Process execution issue"},
-        ErrorType.TIMEOUT: {"en": "Operation timeout"},
-        ErrorType.USER_CANCEL: {"en": "User cancelled the operation"},
-        ErrorType.SYSTEM: {"en": "System issue"},
-        ErrorType.PERMISSION: {"en": "Insufficient permissions"},
-        ErrorType.VALIDATION: {"en": "Data validation failed"},
-        ErrorType.DEPENDENCY: {"en": "Dependency issue"},
-        ErrorType.CONFIGURATION: {"en": "Configuration issue"},
+        ErrorType.NETWORK: "Network connection issue",
+        ErrorType.FILE_IO: "File read/write issue",
+        ErrorType.PROCESS: "Process execution issue",
+        ErrorType.TIMEOUT: "Operation timeout",
+        ErrorType.USER_CANCEL: "User cancelled the operation",
+        ErrorType.SYSTEM: "System issue",
+        ErrorType.PERMISSION: "Insufficient permissions",
+        ErrorType.VALIDATION: "Data validation failed",
+        ErrorType.DEPENDENCY: "Dependency issue",
+        ErrorType.CONFIGURATION: "Configuration issue",
     }
 
     _ERROR_SOLUTIONS = {
-        ErrorType.NETWORK: {
-            "en": [
-                "Check network connection",
-                "Verify firewall settings",
-                "Try restarting the application",
-            ],
-        },
-        ErrorType.FILE_IO: {
-            "en": [
-                "Check if file exists",
-                "Verify file permissions",
-                "Check available disk space",
-            ],
-        },
-        ErrorType.PROCESS: {
-            "en": [
-                "Check if process is running",
-                "Verify system resources",
-                "Try restarting related services",
-            ],
-        },
-        ErrorType.TIMEOUT: {
-            "en": [
-                "Increase timeout settings",
-                "Check network latency",
-                "Retry the operation later",
-            ],
-        },
-        ErrorType.PERMISSION: {
-            "en": [
-                "Run as administrator",
-                "Check file/directory permissions",
-                "Contact system administrator",
-            ],
-        },
+        ErrorType.NETWORK: [
+            "Check network connection",
+            "Verify firewall settings",
+            "Try restarting the application",
+        ],
+        ErrorType.FILE_IO: [
+            "Check if file exists",
+            "Verify file permissions",
+            "Check available disk space",
+        ],
+        ErrorType.PROCESS: [
+            "Check if process is running",
+            "Verify system resources",
+            "Try restarting related services",
+        ],
+        ErrorType.TIMEOUT: [
+            "Increase timeout settings",
+            "Check network latency",
+            "Retry the operation later",
+        ],
+        ErrorType.PERMISSION: [
+            "Run as administrator",
+            "Check file/directory permissions",
+            "Contact system administrator",
+        ],
     }
-
-    @staticmethod
-    def get_current_language() -> str:
-        """Get current language."""
-        try:
-            from ..i18n import get_i18n_manager
-
-            return get_i18n_manager().get_current_language()
-        except Exception:
-            return os.getenv("MCP_LANGUAGE", "en")
-
-    @staticmethod
-    def get_i18n_error_message(error_type: ErrorType) -> str:
-        """Get error message from i18n or built-in mapping."""
-        try:
-            from ..i18n import get_i18n_manager
-
-            i18n = get_i18n_manager()
-            key = f"errors.types.{error_type.value}"
-            message = i18n.t(key)
-            if message == key:
-                raise Exception("Translation not found")
-            return message
-        except Exception:
-            language = ErrorHandler.get_current_language()
-            error_messages = ErrorHandler._ERROR_MESSAGES.get(error_type, {})
-            return error_messages.get(language, error_messages.get("en", "Unknown error"))
-
-    @staticmethod
-    def get_i18n_error_solutions(error_type: ErrorType) -> list[str]:
-        """Get error solutions from i18n or built-in mapping."""
-        try:
-            from ..i18n import get_i18n_manager
-
-            i18n = get_i18n_manager()
-            key = f"errors.solutions.{error_type.value}"
-            i18n_result = i18n.t(key)
-            result: Any = i18n_result
-
-            if isinstance(result, list) and len(result) > 0:
-                return result
-
-            raise Exception("Solutions not found or invalid format")
-        except Exception:
-            language = ErrorHandler.get_current_language()
-            solutions_dict = ErrorHandler._ERROR_SOLUTIONS.get(error_type, {})
-            return solutions_dict.get(language, solutions_dict.get("en", []))
 
     @staticmethod
     def classify_error(error: Exception) -> ErrorType:
@@ -203,8 +145,8 @@ class ErrorHandler:
         if error_type is None:
             error_type = ErrorHandler.classify_error(error)
 
-        user_message = ErrorHandler.get_i18n_error_message(error_type)
-        parts = [f"❌ {user_message}"]
+        user_message = ErrorHandler._ERROR_MESSAGES.get(error_type, "Unknown error")
+        parts = [user_message]
 
         if context:
             if context.get("operation"):
@@ -220,7 +162,7 @@ class ErrorHandler:
     @staticmethod
     def get_error_solutions(error_type: ErrorType) -> list[str]:
         """Get error solution suggestions."""
-        return ErrorHandler.get_i18n_error_solutions(error_type)
+        return ErrorHandler._ERROR_SOLUTIONS.get(error_type, [])
 
     @staticmethod
     def log_error_with_context(
@@ -245,4 +187,3 @@ class ErrorHandler:
             pass
 
         return error_id
-
