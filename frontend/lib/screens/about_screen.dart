@@ -159,7 +159,6 @@ class AboutScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            '• GitHub: github.com/noamgat/mcp-feedback-enhanced\n'
             '• License: MIT',
             style: tt.bodySmall?.copyWith(color: AppColors.accent, height: 1.6),
           ),

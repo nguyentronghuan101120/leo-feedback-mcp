@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/websocket_service.dart';
 import '../services/auto_submit_service.dart';
-import '../services/notification_service.dart';
 import '../services/session_history_service.dart';
 import '../widgets/ai_summary_panel.dart';
 import '../widgets/feedback_panel.dart';
@@ -51,15 +50,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       builder: (context, ws, autoSubmit, _) {
 
         if (ws.sessionId != null && ws.sessionId != _lastSessionId) {
-          final isFirstLoad = _lastSessionId == null;
           _lastSessionId = ws.sessionId;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             _feedbackKey.currentState?.clearFeedback();
             autoSubmit.onNewSession();
-            if (!isFirstLoad) {
-              context.read<NotificationService>().onNewSession();
-            }
             if (ws.sessionId != null) {
               context.read<SessionHistoryService>().onNewSession(
                     sessionId: ws.sessionId!,

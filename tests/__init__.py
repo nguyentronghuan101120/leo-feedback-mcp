@@ -1,6 +1,3 @@
 """
-測試模組包初始化文件
-
-此文件使 tests 目錄成為一個 Python 包，
-允許正確的模組導入和 mypy 類型檢查。
+Tests package init - enables proper module imports and mypy type checking.
 """

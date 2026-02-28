@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:js_interop';
+import 'package:flutter/foundation.dart';
 import 'package:web/web.dart' as web;
 
 class ApiService {
@@ -37,17 +38,23 @@ class ApiService {
             }
             final data = jsonDecode(text);
             completer.complete(data as Map<String, dynamic>?);
-          } catch (_) {
+          } catch (e) {
+            debugPrint('API parse error ($path): $e');
             completer.complete(null);
           }
         } else {
+          debugPrint('API error ($path): status ${request.status}');
           completer.complete(null);
         }
       });
-      request.onError.listen((_) => completer.complete(null));
+      request.onError.listen((_) {
+        debugPrint('API network error ($path)');
+        completer.complete(null);
+      });
       request.send();
       return completer.future;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('API request failed ($path): $e');
       return null;
     }
   }
@@ -66,13 +73,17 @@ class ApiService {
       request.onLoad.listen((_) {
         completer.complete(request.status == 200);
       });
-      request.onError.listen((_) => completer.complete(false));
+      request.onError.listen((_) {
+        debugPrint('API network error (save-session-history)');
+        completer.complete(false);
+      });
       request.send(jsonEncode({
         'sessions': sessions,
         'lastCleanup': lastCleanup,
       }).toJS);
       return completer.future;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('API request failed (save-session-history): $e');
       return false;
     }
   }

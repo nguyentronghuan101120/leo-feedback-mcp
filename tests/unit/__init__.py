@@ -1,5 +1,3 @@
 """
-單元測試模組
-
-包含各個組件的單元測試。
+Unit test module for component unit tests.
 """

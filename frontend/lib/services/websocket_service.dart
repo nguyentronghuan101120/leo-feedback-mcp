@@ -19,13 +19,17 @@ class WebSocketService extends ChangeNotifier {
   String? _summary;
   String? _projectDirectory;
   String? _sessionId;
+  String? _serverVersion;
   bool _feedbackSubmitted = false;
 
   WsConnectionState get connectionState => _connectionState;
   String? get summary => _summary;
   String? get projectDirectory => _projectDirectory;
   String? get sessionId => _sessionId;
+  String? get serverVersion => _serverVersion;
   bool get feedbackSubmitted => _feedbackSubmitted;
+
+  VoidCallback? onSessionUpdated;
 
   final _commandOutputController = StreamController<String>.broadcast();
   Stream<String> get commandOutput => _commandOutputController.stream;
@@ -91,6 +95,7 @@ class WebSocketService extends ChangeNotifier {
             _sessionId = sessionInfo['session_id'] as String? ?? _sessionId;
             _feedbackSubmitted = false;
             notifyListeners();
+            onSessionUpdated?.call();
           }
           break;
 
@@ -232,6 +237,7 @@ class WebSocketService extends ChangeNotifier {
         _summary = data['summary'] as String?;
         _projectDirectory = data['project_directory'] as String?;
         _sessionId = data['session_id'] as String?;
+        _serverVersion = data['version'] as String?;
         notifyListeners();
       }
     } catch (e) {

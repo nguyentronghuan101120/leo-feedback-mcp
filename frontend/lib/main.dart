@@ -50,6 +50,8 @@ class FeedbackHome extends StatefulWidget {
 
 class _FeedbackHomeState extends State<FeedbackHome> {
   int _selectedTab = 0;
+  bool _notificationWired = false;
+  final _rootFocusNode = FocusNode();
 
   static const _tabs = [
     _TabInfo(Icons.dashboard, 'Workspace'),
@@ -59,14 +61,44 @@ class _FeedbackHomeState extends State<FeedbackHome> {
   ];
 
   @override
+  void dispose() {
+    _rootFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_notificationWired) {
+      _notificationWired = true;
+      final ws = context.read<WebSocketService>();
+      final notif = context.read<NotificationService>();
+      ws.onSessionUpdated = notif.onNewSession;
+    }
+  }
+
+  void _onUserInteraction() {
+    context.read<NotificationService>().unlockAudio();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          const HeaderBar(),
-          _buildTabBar(context),
-          Expanded(child: _buildTabContent()),
-        ],
+    return KeyboardListener(
+      focusNode: _rootFocusNode,
+      autofocus: true,
+      onKeyEvent: (_) => _onUserInteraction(),
+      child: GestureDetector(
+        onTap: _onUserInteraction,
+        behavior: HitTestBehavior.translucent,
+        child: Scaffold(
+          body: Column(
+            children: [
+              const HeaderBar(),
+              _buildTabBar(context),
+              Expanded(child: _buildTabContent()),
+            ],
+          ),
+        ),
       ),
     );
   }

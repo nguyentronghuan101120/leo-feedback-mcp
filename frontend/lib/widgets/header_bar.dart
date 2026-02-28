@@ -4,8 +4,6 @@ import '../services/websocket_service.dart';
 import '../services/auto_submit_service.dart';
 import '../theme/app_theme.dart';
 
-const String appVersion = '1.0.0';
-
 class HeaderBar extends StatelessWidget {
   const HeaderBar({super.key});
 
@@ -15,6 +13,7 @@ class HeaderBar extends StatelessWidget {
 
     return Consumer2<WebSocketService, AutoSubmitService>(
       builder: (context, ws, autoSubmit, _) {
+        final version = ws.serverVersion ?? '';
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: const BoxDecoration(
@@ -26,11 +25,13 @@ class HeaderBar extends StatelessWidget {
           child: Row(
             children: [
               Text('Leo Feedback MCP', style: tt.titleLarge),
-              const SizedBox(width: 6),
-              Text(
-                'v$appVersion',
-                style: tt.labelSmall?.copyWith(color: AppColors.textSecondary),
-              ),
+              if (version.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Text(
+                  'v$version',
+                  style: tt.labelSmall?.copyWith(color: AppColors.textSecondary),
+                ),
+              ],
               const Spacer(),
               if (autoSubmit.isCountingDown || autoSubmit.isPaused) ...[
                 _AutoSubmitCountdown(service: autoSubmit),

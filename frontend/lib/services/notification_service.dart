@@ -4,13 +4,56 @@ import 'package:web/web.dart' as web;
 
 /// Always-on notification service.
 /// Plays a beep and shows a browser notification when a new AI response arrives.
+///
+/// Uses a persistent AudioContext that is "unlocked" on the first user
+/// interaction so that subsequent beeps work even when the tab is in
+/// the background.
 class NotificationService {
   bool _permissionRequested = false;
+  web.AudioContext? _audioCtx;
+  bool _audioUnlocked = false;
 
   void onNewSession() {
     _ensureNotifPermission();
     _playBeep();
     _showNotification();
+  }
+
+  /// Call once on any user gesture (click, keypress) to unlock audio
+  /// for background playback.
+  void unlockAudio() {
+    if (_audioUnlocked) return;
+    _audioUnlocked = true;
+
+    try {
+      _audioCtx ??= web.AudioContext();
+      final ctx = _audioCtx!;
+
+      if (ctx.state == 'suspended') {
+        ctx.resume().toDart.then((_) {
+          _playSilent(ctx);
+          debugPrint('Audio unlocked via resume');
+        }).catchError((e) {
+          debugPrint('Audio unlock resume error: $e');
+        });
+      } else {
+        _playSilent(ctx);
+        debugPrint('Audio unlocked');
+      }
+    } catch (e) {
+      debugPrint('Audio unlock error: $e');
+    }
+  }
+
+  /// Play a near-silent tone to establish audio permission for the tab.
+  void _playSilent(web.AudioContext ctx) {
+    final osc = ctx.createOscillator();
+    final gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.001, ctx.currentTime);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.05);
   }
 
   void _ensureNotifPermission() {
@@ -27,8 +70,8 @@ class NotificationService {
 
   void _playBeep() {
     try {
-      // Create a fresh AudioContext each time to avoid suspended state issues
-      final ctx = web.AudioContext();
+      _audioCtx ??= web.AudioContext();
+      final ctx = _audioCtx!;
 
       void doPlay() {
         final osc = ctx.createOscillator();

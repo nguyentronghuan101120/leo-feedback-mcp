@@ -1,5 +1,3 @@
 """
-整合測試模組
-
-包含系統整合測試和端到端測試。
+Integration test module for system integration and end-to-end tests.
 """

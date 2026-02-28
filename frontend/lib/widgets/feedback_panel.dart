@@ -43,6 +43,9 @@ class FeedbackPanelState extends State<FeedbackPanel> {
   Timer? _submitResetTimer;
   final List<_ImageAttachment> _images = [];
 
+  late final JSFunction _globalDragOverHandler;
+  late final JSFunction _globalDropHandler;
+
   static const _imageTypes = {
     'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp'
   };
@@ -55,12 +58,10 @@ class FeedbackPanelState extends State<FeedbackPanel> {
   }
 
   void _setupGlobalDropPrevention() {
-    web.document.addEventListener('dragover', (web.Event e) {
-      e.preventDefault();
-    }.toJS);
-    web.document.addEventListener('drop', (web.Event e) {
-      e.preventDefault();
-    }.toJS);
+    _globalDragOverHandler = ((web.Event e) { e.preventDefault(); }).toJS;
+    _globalDropHandler = ((web.Event e) { e.preventDefault(); }).toJS;
+    web.document.addEventListener('dragover', _globalDragOverHandler);
+    web.document.addEventListener('drop', _globalDropHandler);
   }
 
   void _onTextChanged() {
@@ -100,6 +101,8 @@ class FeedbackPanelState extends State<FeedbackPanel> {
 
   @override
   void dispose() {
+    web.document.removeEventListener('dragover', _globalDragOverHandler);
+    web.document.removeEventListener('drop', _globalDropHandler);
     _typingDebounce?.cancel();
     _submitResetTimer?.cancel();
     _controller.dispose();
@@ -473,6 +476,9 @@ class _DropZone extends StatefulWidget {
 
 class _DropZoneState extends State<_DropZone> {
   int _dragCounter = 0;
+  JSFunction? _dragEnterHandler;
+  JSFunction? _dragLeaveHandler;
+  JSFunction? _dropHandler;
 
   @override
   void initState() {
@@ -484,28 +490,43 @@ class _DropZoneState extends State<_DropZone> {
     final body = web.document.body;
     if (body == null) return;
 
-    body.addEventListener('dragenter', (web.Event e) {
+    _dragEnterHandler = ((web.Event e) {
       e.preventDefault();
       _dragCounter++;
       if (_dragCounter == 1) widget.onDragEnter();
-    }.toJS);
+    }).toJS;
 
-    body.addEventListener('dragleave', (web.Event e) {
+    _dragLeaveHandler = ((web.Event e) {
       _dragCounter--;
       if (_dragCounter <= 0) {
         _dragCounter = 0;
         widget.onDragLeave();
       }
-    }.toJS);
+    }).toJS;
 
-    body.addEventListener('drop', (web.Event e) {
+    _dropHandler = ((web.Event e) {
       e.preventDefault();
       _dragCounter = 0;
       widget.onDragLeave();
       final de = e as web.DragEvent;
       final dt = de.dataTransfer;
       if (dt != null) widget.onDrop(dt);
-    }.toJS);
+    }).toJS;
+
+    body.addEventListener('dragenter', _dragEnterHandler!);
+    body.addEventListener('dragleave', _dragLeaveHandler!);
+    body.addEventListener('drop', _dropHandler!);
+  }
+
+  @override
+  void dispose() {
+    final body = web.document.body;
+    if (body != null) {
+      if (_dragEnterHandler != null) body.removeEventListener('dragenter', _dragEnterHandler!);
+      if (_dragLeaveHandler != null) body.removeEventListener('dragleave', _dragLeaveHandler!);
+      if (_dropHandler != null) body.removeEventListener('drop', _dropHandler!);
+    }
+    super.dispose();
   }
 
   @override

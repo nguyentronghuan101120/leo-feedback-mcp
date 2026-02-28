@@ -1,6 +1,4 @@
-"""
-Web 常量模組
-"""
+"""Web constants."""
 
 from .message_codes import MessageCodes, get_message_code
 

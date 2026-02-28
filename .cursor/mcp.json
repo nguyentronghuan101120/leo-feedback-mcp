@@ -4,11 +4,11 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
     },
-    "mcp-feedback-enhanced": {
+    "leo-feedback-mcp": {
       "command": "uv",
-      "args": ["run", "--directory", "/Users/leonguyen/Desktop/leo-feedback-mcp", "mcp-feedback-enhanced"],
-      "timeout": 600,
-      "autoApprove": ["interactive_feedback"]
+      "args": ["run", "--directory", "/Users/leonguyen/Desktop/leo-feedback-mcp", "leo-feedback-mcp"],
+      "timeout": 300,
+      "autoApprove": ["interactive_feedback", "interactive_feedback_response", "leo_feedback_mcp"]
     },
     "dart": {
       "type": "stdio",

@@ -1,5 +1,3 @@
 """
-測試固定數據模組
-
-包含測試中使用的固定數據和配置。
+Test fixtures and configuration module.
 """

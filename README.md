@@ -2,7 +2,6 @@
 
 A customized MCP (Model Context Protocol) server for interactive feedback collection during AI-assisted development. Built with a **Flutter Web** frontend and **Python/FastAPI** backend.
 
-Forked from [mcp-feedback-enhanced](https://github.com/Minidoracat/mcp-feedback-enhanced).
 
 ## Features
 
@@ -76,13 +75,13 @@ MCP configuration (`.cursor/mcp.json`):
 }
 ```
 
-### Option B: Install from source (recommended for development)
+### Option B: Install from source (for development)
 
 ```bash
 git clone <your-repo-url> ~/Desktop/leo-feedback-mcp
 cd ~/Desktop/leo-feedback-mcp
-uv sync
-make build-flutter
+make init
+make build
 ```
 
 MCP configuration (`.cursor/mcp.json`):
@@ -120,39 +119,6 @@ Once configured, the AI assistant will automatically call `interactive_feedback`
 4. **View session history** of previous AI interactions
 5. **Configure** auto-submit prompts and timeout settings
 
-## Frontend Development
-
-The Flutter Web frontend is located in the `frontend/` directory.
-
-```bash
-cd frontend
-
-# Install Flutter dependencies
-flutter pub get
-
-# Run in debug mode (connects to backend on port 8765)
-flutter run -d chrome
-
-# Build for production
-flutter build web --release
-```
-
-The production build output goes to `frontend/build/web/` and is served by the Python backend.
-
-## Testing
-
-### Test Web UI manually
-
-```bash
-uv run leo-feedback-mcp test --web
-```
-
-### Run unit tests
-
-```bash
-uv run pytest
-```
-
 ## Environment Variables
 
 | Variable | Description | Default |
@@ -161,61 +127,6 @@ uv run pytest
 | `MCP_WEB_HOST` | Web UI host | `127.0.0.1` |
 | `MCP_WEB_PORT` | Web UI port | `8765` |
 
-## Development
-
-```bash
-# Complete dev setup
-make dev-setup
-
-# Install dev dependencies
-make install-dev
-
-# Run linting
-make lint
-
-# Format code
-make format
-
-# Run all code quality checks
-make check
-
-# Build Flutter + Python package
-make build
-
-# Build Flutter Web UI only
-make build-flutter
-
-# Quick check with auto-fix
-make quick-check
-```
-
-## Project Structure
-
-```
-leo-feedback-mcp/
-├── frontend/                    # Flutter Web frontend
-│   ├── lib/
-│   │   ├── main.dart           # App entry point
-│   │   ├── theme/              # App theme (dark mode)
-│   │   ├── screens/            # Workspace, Sessions, Settings, About
-│   │   ├── widgets/            # AI Summary, Feedback Panel, Header
-│   │   └── services/           # WebSocket, API, Auto-submit, Notifications, Session History
-│   ├── web/                    # Web assets (icons, manifest)
-│   └── pubspec.yaml
-├── src/mcp_feedback_enhanced/  # Python backend
-│   ├── server.py               # MCP tool definitions
-│   ├── web/
-│   │   ├── main.py             # FastAPI app setup
-│   │   ├── routes/             # HTTP & WebSocket routes
-│   │   └── models/             # Session models
-│   └── utils/                  # Error handling, resource management
-├── Makefile                    # Build & dev commands
-├── pyproject.toml              # Python project config
-└── README.md
-```
-
 ## Credits
 
-- Original author: Fabio Ferreira
-- Enhanced by: [Minidoracat](https://github.com/Minidoracat/mcp-feedback-enhanced)
-- Flutter Web UI & customizations: Leo
+- Author: Leo Nguyen
