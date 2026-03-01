@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../services/websocket_service.dart';
 import '../services/session_history_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_action_button.dart';
@@ -15,7 +14,7 @@ class SessionsScreen extends StatefulWidget {
 }
 
 class _SessionsScreenState extends State<SessionsScreen> {
-  String? _expandedSessionId;
+  String? _expandedEntryId;
 
   @override
   Widget build(BuildContext context) {
@@ -80,7 +79,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
   Widget _buildContent(BuildContext context) {
     final history = context.watch<SessionHistoryService>();
-    final ws = context.watch<WebSocketService>();
     final tt = Theme.of(context).textTheme;
 
     if (!history.loaded) {
@@ -110,8 +108,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
       itemCount: history.sessions.length,
       itemBuilder: (context, index) {
         final session = history.sessions[index];
-        final isCurrent = session.sessionId == ws.sessionId;
-        final isExpanded = _expandedSessionId == session.sessionId;
+        final isCurrent = session.entryId == history.latestEntryId;
+        final isExpanded = _expandedEntryId == session.entryId;
         return _buildSessionCard(context, session, isCurrent, isExpanded);
       },
     );
@@ -144,7 +142,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
           InkWell(
             onTap: () {
               setState(() {
-                _expandedSessionId = isExpanded ? null : session.sessionId;
+                _expandedEntryId = isExpanded ? null : session.entryId;
               });
             },
             borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
@@ -344,10 +342,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
                   iconColor: AppColors.error,
                   onPressed: () {
                     context.read<SessionHistoryService>().removeSession(
-                      session.sessionId,
+                      session.entryId,
                     );
-                    if (mounted && _expandedSessionId == session.sessionId) {
-                      setState(() => _expandedSessionId = null);
+                    if (mounted && _expandedEntryId == session.entryId) {
+                      setState(() => _expandedEntryId = null);
                     }
                   },
                 ),

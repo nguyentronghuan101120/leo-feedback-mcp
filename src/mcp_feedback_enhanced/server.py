@@ -308,7 +308,9 @@ async def interactive_feedback(
             project_directory = os.getcwd()
         project_directory = os.path.abspath(project_directory)
 
-        result = await launch_web_feedback_ui(project_directory, summary, timeout)
+        result = await launch_web_feedback_ui(
+            project_directory, summary, timeout
+        )
 
         if not result:
             return [TextContent(type="text", text="Feedback cancelled by user.")]
@@ -348,7 +350,9 @@ async def interactive_feedback(
         return [TextContent(type="text", text=user_error_msg)]
 
 
-async def launch_web_feedback_ui(project_dir: str, summary: str, timeout: int) -> dict:
+async def launch_web_feedback_ui(
+    project_dir: str, summary: str, timeout: int
+) -> dict:
     """Launch Web UI for feedback collection with custom timeout."""
     try:
         from .web import launch_web_feedback_ui as web_launch

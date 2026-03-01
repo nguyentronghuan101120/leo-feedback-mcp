@@ -8,18 +8,23 @@ import 'package:web/web.dart' as web;
 class ApiService {
   static String get _baseUrl {
     final uri = Uri.base;
-    final host = uri.host;
-    var port = uri.port;
-
-    if (port != 8765 && (host == 'localhost' || host == '127.0.0.1')) {
-      port = 8765;
-    }
-
-    return '${uri.scheme}://$host:$port';
+    return '${uri.scheme}://${uri.host}:${uri.port}';
   }
 
-  static Future<Map<String, dynamic>?> getInitialData() async {
-    return _get('/api/initial-data');
+  /// Extract session ID from the current URL path.
+  // ignore: unintended_html_in_doc_comment
+  /// Expected format: /session/<session_id>
+  static String? extractSessionIdFromUrl() {
+    final path = Uri.base.path;
+    final segments = path.split('/').where((s) => s.isNotEmpty).toList();
+    if (segments.length >= 2 && segments[0] == 'session') {
+      return segments[1];
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> getInitialData(String sessionId) async {
+    return _get('/api/session/$sessionId/initial-data');
   }
 
   static Future<Map<String, dynamic>?> _get(String path) async {
@@ -74,12 +79,21 @@ class ApiService {
     }
   }
 
+  static Future<List<Map<String, dynamic>>> getActiveSessions() async {
+    final data = await _get('/api/sessions/active');
+    if (data == null) return [];
+    final list = data['sessions'] as List? ?? [];
+    return list.whereType<Map<String, dynamic>>().toList();
+  }
+
   static Future<Map<String, dynamic>?> loadSessionHistory() async {
     return _get('/api/load-session-history');
   }
 
   static Future<bool> saveSessionHistory(
-      List<Map<String, dynamic>> sessions, int lastCleanup) async {
+    List<Map<String, dynamic>> sessions,
+    int lastCleanup,
+  ) async {
     try {
       final request = web.XMLHttpRequest();
       final completer = Completer<bool>();
@@ -97,10 +111,9 @@ class ApiService {
         debugPrint('API network error (save-session-history)');
         completer.complete(false);
       });
-      request.send(jsonEncode({
-        'sessions': sessions,
-        'lastCleanup': lastCleanup,
-      }).toJS);
+      request.send(
+        jsonEncode({'sessions': sessions, 'lastCleanup': lastCleanup}).toJS,
+      );
       return completer.future.timeout(
         const Duration(seconds: 15),
         onTimeout: () {

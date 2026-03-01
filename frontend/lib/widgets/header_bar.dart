@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:web/web.dart' as web;
 import '../services/websocket_service.dart';
 import '../services/auto_submit_service.dart';
 import '../theme/app_theme.dart';
@@ -33,6 +34,18 @@ class HeaderBar extends StatelessWidget {
                 ),
               ],
               const Spacer(),
+              IconButton(
+                onPressed: () {
+                  final uri = Uri.base;
+                  final url = '${uri.scheme}://${uri.host}:${uri.port}/';
+                  web.window.open(url, '_blank');
+                },
+                icon: const Icon(Icons.grid_view, size: 16, color: AppColors.textSecondary),
+                tooltip: 'All Sessions',
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                padding: EdgeInsets.zero,
+              ),
+              const SizedBox(width: 4),
               if (autoSubmit.isCountingDown || autoSubmit.isPaused) ...[
                 _AutoSubmitCountdown(service: autoSubmit),
                 const SizedBox(width: 12),

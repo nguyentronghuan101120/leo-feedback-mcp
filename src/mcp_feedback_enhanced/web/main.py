@@ -26,7 +26,7 @@ from .utils.port_manager import PortManager
 
 
 class WebUIManager:
-    """Web UI manager with single active session mode."""
+    """Web UI manager with multi-session isolation support."""
 
     def __init__(self, host: str = "127.0.0.1", port: int | None = None):
         env_host = os.getenv("MCP_WEB_HOST")
@@ -35,7 +35,7 @@ class WebUIManager:
         else:
             self.host = host
 
-        preferred_port = 8765
+        preferred_port = 33333
 
         env_port = os.getenv("MCP_WEB_PORT")
         if env_port:
@@ -75,11 +75,7 @@ class WebUIManager:
         self._setup_compression_middleware()
         self._setup_memory_monitoring()
 
-        self.current_session: WebFeedbackSession | None = None
         self.sessions: dict[str, WebFeedbackSession] = {}
-
-        self.global_active_tabs: dict[str, dict] = {}
-        self._pending_session_update = False
 
         self.cleanup_stats: dict[str, Any] = {
             "total_cleanups": 0,
@@ -223,61 +219,34 @@ class WebUIManager:
             self.flutter_build_path = None
 
     def create_session(self, project_directory: str, summary: str) -> str:
-        """Create new feedback session; single active session mode, preserves tab state."""
-        old_session = self.current_session
-        old_websocket = None
-        if old_session and old_session.websocket:
-            old_websocket = old_session.websocket
-
+        """Create new isolated feedback session. Each session is independent."""
         session_id = str(uuid.uuid4())
         session = WebFeedbackSession(session_id, project_directory, summary)
-
-        if old_session:
-            if hasattr(old_session, "active_tabs"):
-                self._merge_tabs_to_global(old_session.active_tabs)
-
-            if old_session.status == SessionStatus.FEEDBACK_SUBMITTED:
-                success = old_session.next_step("Feedback processed, session completed")
-            else:
-                pass
-
-            if old_session.session_id in self.sessions:
-                pass
-            else:
-                self.sessions[old_session.session_id] = old_session
-
-            old_session._cleanup_sync()
-
-        session.active_tabs = self.global_active_tabs.copy()
-
-        self.current_session = session
         self.sessions[session_id] = session
-
-        if old_websocket:
-            session.websocket = old_websocket
-        else:
-            self._pending_session_update = True
-
         return session_id
 
-    def get_current_session(self) -> WebFeedbackSession | None:
-        """Get current active session."""
-        return self.current_session
+    def find_reusable_session(self) -> WebFeedbackSession | None:
+        """Find a completed session whose browser tab is still connected.
 
-    def _merge_tabs_to_global(self, session_tabs: dict):
-        """Merge session tab state into global state."""
-        current_time = time.time()
-        expired_threshold = 60
+        Only reuses sessions that have already received feedback (completed).
+        Sessions still waiting for feedback belong to another conversation
+        and must not be overwritten.
+        """
+        best = None
+        best_time = 0.0
+        for session in self.sessions.values():
+            if (
+                session.websocket is not None
+                and session.feedback_completed.is_set()
+            ):
+                if session.last_activity > best_time:
+                    best = session
+                    best_time = session.last_activity
+        return best
 
-        self.global_active_tabs = {
-            tab_id: tab_info
-            for tab_id, tab_info in self.global_active_tabs.items()
-            if current_time - tab_info.get("last_seen", 0) <= expired_threshold
-        }
-
-        for tab_id, tab_info in session_tabs.items():
-            if current_time - tab_info.get("last_seen", 0) <= expired_threshold:
-                self.global_active_tabs[tab_id] = tab_info
+    def get_session(self, session_id: str) -> WebFeedbackSession | None:
+        """Get session by ID."""
+        return self.sessions.get(session_id)
 
     def start_server(self):
         """Start Web server (supports parallel init)."""
@@ -377,96 +346,6 @@ class WebUIManager:
         except Exception as e:
             print(str(e), file=sys.stderr)
 
-    async def smart_open_browser(self, url: str) -> bool:
-        """Open browser; reuse existing tab if active.
-
-        Returns:
-            bool: True if active tabs detected, False if new window opened.
-        """
-        try:
-            has_active_tabs = await self._check_active_tabs()
-
-            if has_active_tabs:
-                await self.notify_existing_tab_to_refresh()
-                return True
-
-            self.open_browser(url)
-            return False
-
-        except Exception as e:
-            self.open_browser(url)
-            return False
-
-    async def notify_existing_tab_to_refresh(self) -> bool:
-        """Notify existing tabs to refresh for new session.
-
-        Returns:
-            bool: True if sent successfully.
-        """
-        try:
-            if not self.current_session or not self.current_session.websocket:
-                return False
-
-            refresh_message = {
-                "type": "session_updated",
-                "action": "new_session_created",
-                "messageCode": "session.created",
-                "session_info": {
-                    "session_id": self.current_session.session_id,
-                    "project_directory": self.current_session.project_directory,
-                    "summary": self.current_session.summary,
-                    "status": self.current_session.status.value,
-                },
-            }
-
-            await self.current_session.websocket.send_json(refresh_message)
-
-            await asyncio.sleep(0.2)
-            return True
-
-        except Exception as e:
-            return False
-
-    async def _check_active_tabs(self) -> bool:
-        """Check for active tabs (layered detection)."""
-        try:
-            if not self.current_session or not self.current_session.websocket:
-                return False
-
-            last_heartbeat = getattr(self.current_session, "last_heartbeat", None)
-            if last_heartbeat:
-                heartbeat_age = time.time() - last_heartbeat
-                if heartbeat_age > 10:
-                    pass
-                else:
-                    return True
-
-            try:
-                websocket = self.current_session.websocket
-
-                if hasattr(websocket, "client_state"):
-                    try:
-                        import starlette.websockets  # type: ignore[import-not-found]
-
-                        if hasattr(starlette.websockets, "WebSocketState"):
-                            WebSocketState = starlette.websockets.WebSocketState
-                            if websocket.client_state != WebSocketState.CONNECTED:
-                                self.current_session.websocket = None
-                                return False
-                    except ImportError:
-                        pass
-
-                await websocket.send_json({"type": "ping", "timestamp": time.time()})
-                return True
-
-            except Exception as e:
-                if self.current_session:
-                    self.current_session.websocket = None
-                return False
-
-        except Exception as e:
-            return False
-
     def get_server_url(self) -> str:
         """Get server URL."""
         return f"http://{self.host}:{self.port}"
@@ -488,12 +367,6 @@ class WebUIManager:
                     session._cleanup_sync_enhanced(CleanupReason.EXPIRED)
                     del self.sessions[session_id]
                     cleaned_count += 1
-
-                    if (
-                        self.current_session
-                        and self.current_session.session_id == session_id
-                    ):
-                        self.current_session = None
 
             except Exception as e:
                 ErrorHandler.log_error_with_context(
@@ -523,11 +396,7 @@ class WebUIManager:
         sessions_to_clean = []
 
         for session_id, session in self.sessions.items():
-            if (
-                not force
-                and self.current_session
-                and session.session_id == self.current_session.session_id
-            ):
+            if not force and session.is_active():
                 continue
 
             if session.status in [
@@ -555,12 +424,6 @@ class WebUIManager:
                 session._cleanup_sync_enhanced(CleanupReason.MEMORY_PRESSURE)
                 del self.sessions[session_id]
                 cleaned_count += 1
-
-                if (
-                    self.current_session
-                    and self.current_session.session_id == session_id
-                ):
-                    self.current_session = None
 
             except Exception as e:
                 ErrorHandler.log_error_with_context(
@@ -599,7 +462,6 @@ class WebUIManager:
                 print(str(e), file=sys.stderr)
 
         self.sessions.clear()
-        self.current_session = None
 
         cleanup_duration = time.time() - cleanup_start_time
         self.cleanup_stats.update(
@@ -630,9 +492,17 @@ def get_web_ui_manager() -> WebUIManager:
 
 
 async def launch_web_feedback_ui(
-    project_directory: str, summary: str, timeout: int = 600
+    project_directory: str,
+    summary: str,
+    timeout: int = 600,
 ) -> dict:
     """Launch Web feedback UI and wait for user feedback.
+
+    Reuse logic:
+    - If a completed session with an open browser tab exists, reuse it
+      (same conversation calling again after feedback was submitted).
+    - If all existing sessions are still waiting, create a new session
+      (different conversation - must not overwrite).
 
     Args:
         project_directory: Project directory path.
@@ -644,17 +514,45 @@ async def launch_web_feedback_ui(
     """
     manager = get_web_ui_manager()
 
-    manager.create_session(project_directory, summary)
-    session = manager.get_current_session()
-
-    if not session:
-        raise RuntimeError("Failed to create feedback session")
-
     if manager.server_thread is None or not manager.server_thread.is_alive():
         manager.start_server()
 
-    feedback_url = manager.get_server_url()
-    has_active_tabs = await manager.smart_open_browser(feedback_url)
+    session = manager.find_reusable_session()
+
+    if session:
+        session.summary = summary
+        session.project_directory = project_directory
+        session.feedback_result = None
+        session.images = []
+        session.settings = {}
+        session.feedback_completed.clear()
+        session.status = SessionStatus.WAITING
+        session.status_message = "Waiting for user feedback"
+        session.last_activity = time.time()
+
+        if session.websocket:
+            try:
+                await session.websocket.send_json({
+                    "type": "session_updated",
+                    "action": "session_reused",
+                    "session_info": {
+                        "session_id": session.session_id,
+                        "project_directory": session.project_directory,
+                        "summary": session.summary,
+                        "status": session.status.value,
+                    },
+                })
+            except Exception:
+                pass
+    else:
+        session_id = manager.create_session(project_directory, summary)
+        session = manager.get_session(session_id)
+
+        if not session:
+            raise RuntimeError("Failed to create feedback session")
+
+        feedback_url = f"{manager.get_server_url()}/session/{session_id}"
+        manager.open_browser(feedback_url)
 
     try:
         result = await session.wait_for_feedback(timeout)

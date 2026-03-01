@@ -17,6 +17,7 @@ class WorkspaceScreen extends StatefulWidget {
 class _WorkspaceScreenState extends State<WorkspaceScreen> {
   final _feedbackKey = GlobalKey<FeedbackPanelState>();
   String? _lastSessionId;
+  int _lastSessionVersion = 0;
   bool _autoSubmitCallbackSet = false;
 
   void _doAutoSubmit() {
@@ -50,8 +51,14 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     return Consumer2<WebSocketService, AutoSubmitService>(
       builder: (context, ws, autoSubmit, _) {
 
-        if (ws.sessionId != null && ws.sessionId != _lastSessionId) {
+        final isNewSession =
+            ws.sessionId != null && ws.sessionId != _lastSessionId;
+        final isSessionReused =
+            ws.sessionId != null && ws.sessionVersion != _lastSessionVersion;
+
+        if (isNewSession || isSessionReused) {
           _lastSessionId = ws.sessionId;
+          _lastSessionVersion = ws.sessionVersion;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             autoSubmit.onNewSession();

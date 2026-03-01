@@ -22,13 +22,13 @@ if TYPE_CHECKING:
 
 
 def setup_routes(manager: "WebUIManager"):
-    """Configure routes."""
+    """Configure routes with per-session isolation."""
 
-    @manager.app.get("/api/initial-data")
-    async def get_initial_data():
-        """Provide initial session data for Flutter UI"""
-        current_session = manager.get_current_session()
-        if not current_session:
+    @manager.app.get("/api/session/{session_id}/initial-data")
+    async def get_initial_data(session_id: str):
+        """Provide initial session data for Flutter UI (session-scoped)."""
+        session = manager.get_session(session_id)
+        if not session:
             return JSONResponse({
                 "has_session": False,
                 "version": __version__,
@@ -36,14 +36,14 @@ def setup_routes(manager: "WebUIManager"):
         return JSONResponse({
             "has_session": True,
             "version": __version__,
-            "project_directory": current_session.project_directory,
-            "summary": current_session.summary,
-            "session_id": current_session.session_id,
+            "project_directory": session.project_directory,
+            "summary": session.summary,
+            "session_id": session.session_id,
         })
 
     @manager.app.get("/")
     async def index(request: Request):
-        """Serve Flutter Web UI"""
+        """Serve Flutter Web UI (root)."""
         flutter_path = getattr(manager, "flutter_build_path", None)
         if flutter_path and (flutter_path / "index.html").exists():
             return FileResponse(str(flutter_path / "index.html"))
@@ -53,278 +53,45 @@ def setup_routes(manager: "WebUIManager"):
             content={"error": "Flutter Web UI not built. Run: cd frontend && flutter build web --release"},
         )
 
-    @manager.app.get("/api/session-status")
-    async def get_session_status(request: Request):
-        """Get current session status."""
-        current_session = manager.get_current_session()
-
-        if not current_session:
-            return JSONResponse(
-                content={
-                    "has_session": False,
-                    "status": "no_session",
-                    "messageCode": get_msg_code("no_active_session"),
-                }
-            )
-
-        return JSONResponse(
-            content={
-                "has_session": True,
-                "status": "active",
-                "session_info": {
-                    "project_directory": current_session.project_directory,
-                    "summary": current_session.summary,
-                    "feedback_completed": current_session.feedback_completed.is_set(),
-                },
-            }
-        )
-
-    @manager.app.get("/api/current-session")
-    async def get_current_session(request: Request):
-        """Get current session details."""
-        current_session = manager.get_current_session()
-
-        if not current_session:
+    @manager.app.get("/session/{session_id}")
+    async def session_index(session_id: str):
+        """Serve Flutter Web UI for a specific session."""
+        session = manager.get_session(session_id)
+        if not session:
             return JSONResponse(
                 status_code=404,
-                content={
-                    "error": "No active session",
-                    "messageCode": get_msg_code("no_active_session"),
-                },
+                content={"error": f"Session {session_id} not found"},
             )
+
+        flutter_path = getattr(manager, "flutter_build_path", None)
+        if flutter_path and (flutter_path / "index.html").exists():
+            return FileResponse(str(flutter_path / "index.html"))
 
         return JSONResponse(
-            content={
-                "session_id": current_session.session_id,
-                "project_directory": current_session.project_directory,
-                "summary": current_session.summary,
-                "feedback_completed": current_session.feedback_completed.is_set(),
-                "command_logs": current_session.command_logs,
-                "images_count": len(current_session.images),
-            }
+            status_code=503,
+            content={"error": "Flutter Web UI not built. Run: cd frontend && flutter build web --release"},
         )
 
-    @manager.app.get("/api/all-sessions")
-    async def get_all_sessions(request: Request):
-        """Get real-time status of all sessions."""
-
+    @manager.app.get("/api/sessions/active")
+    async def get_active_sessions():
+        """Get list of sessions currently waiting for feedback."""
         try:
-            sessions_data = []
-
-            for session_id, session in manager.sessions.items():
-                session_info = {
-                    "session_id": session.session_id,
-                    "project_directory": session.project_directory,
-                    "summary": session.summary,
-                    "status": session.status.value,
-                    "status_message": session.status_message,
-                    "created_at": int(session.created_at * 1000),
-                    "last_activity": int(session.last_activity * 1000),
-                    "feedback_completed": session.feedback_completed.is_set(),
-                    "has_websocket": session.websocket is not None,
-                    "is_current": session == manager.current_session,
-                    "user_messages": session.user_messages,
-                }
-                sessions_data.append(session_info)
-
-            sessions_data.sort(key=lambda x: x["created_at"], reverse=True)
-
-            return JSONResponse(content={"sessions": sessions_data})
-
+            active = []
+            for session in manager.sessions.values():
+                if session.is_active() and not session.is_terminal():
+                    active.append({
+                        "session_id": session.session_id,
+                        "project_directory": session.project_directory,
+                        "summary": session.summary,
+                        "status": session.status.value,
+                        "created_at": int(session.created_at * 1000),
+                    })
+            active.sort(key=lambda x: x["created_at"], reverse=True)
+            return JSONResponse(content={"sessions": active})
         except Exception as e:
             return JSONResponse(
                 status_code=500,
-                content={
-                    "error": f"Failed to get sessions: {e!s}",
-                    "messageCode": get_msg_code("get_sessions_failed"),
-                },
-            )
-
-    @manager.app.post("/api/add-user-message")
-    async def add_user_message(request: Request):
-        """Add user message to current session."""
-
-        try:
-            data = await request.json()
-            current_session = manager.get_current_session()
-
-            if not current_session:
-                return JSONResponse(
-                    status_code=404,
-                    content={
-                        "error": "No active session",
-                        "messageCode": get_msg_code("no_active_session"),
-                    },
-                )
-
-            current_session.add_user_message(data)
-
-            return JSONResponse(
-                content={
-                    "status": "success",
-                    "messageCode": get_msg_code("user_message_recorded"),
-                }
-            )
-
-        except Exception as e:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "error": f"Failed to add user message: {e!s}",
-                    "messageCode": get_msg_code("add_user_message_failed"),
-                },
-            )
-
-    @manager.app.websocket("/ws")
-    async def websocket_endpoint(websocket: WebSocket, lang: str = "en"):
-        """WebSocket endpoint."""
-        session = manager.get_current_session()
-        if not session:
-            await websocket.close(code=4004, reason="No active session")
-            return
-
-        await websocket.accept()
-
-        if session.websocket and session.websocket != websocket:
-            pass
-
-        session.websocket = websocket
-
-        try:
-            await websocket.send_json(
-                {
-                    "type": "connection_established",
-                    "messageCode": get_msg_code("websocket_connected"),
-                }
-            )
-
-            if getattr(manager, "_pending_session_update", False):
-                await websocket.send_json(
-                    {
-                        "type": "session_updated",
-                        "action": "new_session_created",
-                        "messageCode": get_msg_code("new_session_created"),
-                        "session_info": {
-                            "project_directory": session.project_directory,
-                            "summary": session.summary,
-                            "session_id": session.session_id,
-                        },
-                    }
-                )
-                manager._pending_session_update = False
-            else:
-                await websocket.send_json(
-                    {"type": "status_update", "status_info": session.get_status_info()}
-                )
-
-        except Exception as e:
-            print(str(e), file=sys.stderr)
-
-        try:
-            while True:
-                data = await websocket.receive_text()
-                message = json.loads(data)
-
-                current_session = manager.get_current_session()
-                if current_session and current_session.websocket == websocket:
-                    await handle_websocket_message(manager, current_session, message)
-                else:
-                    break
-
-        except WebSocketDisconnect:
-            pass
-        except ConnectionResetError:
-            pass
-        except Exception as e:
-            print(str(e), file=sys.stderr)
-        finally:
-            if session.websocket == websocket:
-                session.websocket = None
-
-    @manager.app.post("/api/save-settings")
-    async def save_settings(request: Request):
-        """Save settings to file."""
-
-        try:
-            data = await request.json()
-
-            config_dir = Path.home() / ".config" / "leo-feedback-mcp"
-            config_dir.mkdir(parents=True, exist_ok=True)
-            settings_file = config_dir / "ui_settings.json"
-
-            with open(settings_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-
-            return JSONResponse(
-                content={
-                    "status": "success",
-                    "messageCode": get_msg_code("settings_saved"),
-                }
-            )
-
-        except Exception as e:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "status": "error",
-                    "message": f"Save failed: {e!s}",
-                    "messageCode": get_msg_code("save_failed"),
-                },
-            )
-
-    @manager.app.get("/api/load-settings")
-    async def load_settings(request: Request):
-        """Load settings from file."""
-
-        try:
-            config_dir = Path.home() / ".config" / "leo-feedback-mcp"
-            settings_file = config_dir / "ui_settings.json"
-
-            if settings_file.exists():
-                with open(settings_file, encoding="utf-8") as f:
-                    settings = json.load(f)
-
-                return JSONResponse(content=settings)
-            return JSONResponse(content={})
-
-        except Exception as e:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "status": "error",
-                    "message": f"Load failed: {e!s}",
-                    "messageCode": get_msg_code("load_failed"),
-                },
-            )
-
-    @manager.app.post("/api/clear-settings")
-    async def clear_settings(request: Request):
-        """Clear settings file."""
-
-        try:
-            config_dir = Path.home() / ".config" / "leo-feedback-mcp"
-            settings_file = config_dir / "ui_settings.json"
-
-            if settings_file.exists():
-                settings_file.unlink()
-            else:
-                pass
-
-            return JSONResponse(
-                content={
-                    "status": "success",
-                    "messageCode": get_msg_code("settings_cleared"),
-                }
-            )
-
-        except Exception as e:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "status": "error",
-                    "message": f"Clear failed: {e!s}",
-                    "messageCode": get_msg_code("clear_failed"),
-                },
+                content={"error": f"Failed to get active sessions: {e!s}"},
             )
 
     @manager.app.get("/api/load-session-history")
@@ -403,80 +170,47 @@ def setup_routes(manager: "WebUIManager"):
                 },
             )
 
-    @manager.app.get("/api/log-level")
-    async def get_log_level(request: Request):
-        """Get log level setting."""
+    @manager.app.websocket("/ws/{session_id}")
+    async def websocket_endpoint(websocket: WebSocket, session_id: str):
+        """WebSocket endpoint scoped to a specific session."""
+        session = manager.get_session(session_id)
+        if not session:
+            await websocket.close(code=4004, reason="Session not found")
+            return
+
+        await websocket.accept()
+        session.websocket = websocket
 
         try:
-            config_dir = Path.home() / ".config" / "leo-feedback-mcp"
-            settings_file = config_dir / "ui_settings.json"
-
-            if settings_file.exists():
-                with open(settings_file, encoding="utf-8") as f:
-                    settings_data = json.load(f)
-                    log_level = settings_data.get("logLevel", "INFO")
-                    return JSONResponse(content={"logLevel": log_level})
-            else:
-                default_log_level = "INFO"
-                return JSONResponse(content={"logLevel": default_log_level})
-
-        except Exception as e:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "error": f"Failed to get log level: {e!s}",
-                    "messageCode": get_msg_code("get_log_level_failed"),
-                },
-            )
-
-    @manager.app.post("/api/log-level")
-    async def set_log_level(request: Request):
-        """Set log level."""
-
-        try:
-            data = await request.json()
-            log_level = data.get("logLevel")
-
-            if not log_level or log_level not in ["DEBUG", "INFO", "WARN", "ERROR"]:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "error": "Invalid log level",
-                        "messageCode": get_msg_code("invalid_log_level"),
-                    },
-                )
-
-            config_dir = Path.home() / ".config" / "leo-feedback-mcp"
-            config_dir.mkdir(parents=True, exist_ok=True)
-            settings_file = config_dir / "ui_settings.json"
-
-            settings_data = {}
-            if settings_file.exists():
-                with open(settings_file, encoding="utf-8") as f:
-                    settings_data = json.load(f)
-
-            settings_data["logLevel"] = log_level
-
-            with open(settings_file, "w", encoding="utf-8") as f:
-                json.dump(settings_data, f, ensure_ascii=False, indent=2)
-
-            return JSONResponse(
-                content={
-                    "status": "success",
-                    "logLevel": log_level,
-                    "messageCode": get_msg_code("log_level_updated"),
+            await websocket.send_json(
+                {
+                    "type": "connection_established",
+                    "messageCode": get_msg_code("websocket_connected"),
                 }
             )
 
-        except Exception as e:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "status": "error",
-                    "message": f"Set failed: {e!s}",
-                    "messageCode": get_msg_code("set_failed"),
-                },
+            await websocket.send_json(
+                {"type": "status_update", "status_info": session.get_status_info()}
             )
+
+        except Exception as e:
+            print(str(e), file=sys.stderr)
+
+        try:
+            while True:
+                data = await websocket.receive_text()
+                message = json.loads(data)
+                await handle_websocket_message(manager, session, message)
+
+        except WebSocketDisconnect:
+            pass
+        except ConnectionResetError:
+            pass
+        except Exception as e:
+            print(str(e), file=sys.stderr)
+        finally:
+            if session.websocket == websocket:
+                session.websocket = None
 
     # Mount Flutter static files LAST so API routes take priority
     flutter_path = getattr(manager, "flutter_build_path", None)

@@ -21,6 +21,7 @@ class WebSocketService extends ChangeNotifier {
   String? _sessionId;
   String? _serverVersion;
   bool _feedbackSubmitted = false;
+  int _sessionVersion = 0;
 
   WsConnectionState get connectionState => _connectionState;
   String? get summary => _summary;
@@ -28,6 +29,7 @@ class WebSocketService extends ChangeNotifier {
   String? get sessionId => _sessionId;
   String? get serverVersion => _serverVersion;
   bool get feedbackSubmitted => _feedbackSubmitted;
+  int get sessionVersion => _sessionVersion;
 
   VoidCallback? onSessionUpdated;
 
@@ -91,9 +93,10 @@ class WebSocketService extends ChangeNotifier {
             _summary = sessionInfo['summary'] as String? ?? _summary;
             _projectDirectory =
                 sessionInfo['project_directory'] as String? ??
-                _projectDirectory;
+                    _projectDirectory;
             _sessionId = sessionInfo['session_id'] as String? ?? _sessionId;
             _feedbackSubmitted = false;
+            _sessionVersion++;
             notifyListeners();
             onSessionUpdated?.call();
           }
@@ -192,15 +195,9 @@ class WebSocketService extends ChangeNotifier {
 
   String _buildWsUrl() {
     final uri = Uri.base;
-    final host = uri.host;
-    var port = uri.port;
-
-    if (port != 8765 && (host == 'localhost' || host == '127.0.0.1')) {
-      port = 8765;
-    }
-
     final wsScheme = uri.scheme == 'https' ? 'wss' : 'ws';
-    return '$wsScheme://$host:$port/ws?lang=en';
+    final sid = _sessionId ?? ApiService.extractSessionIdFromUrl() ?? '';
+    return '$wsScheme://${uri.host}:${uri.port}/ws/$sid';
   }
 
   void _sendMessage(Map<String, dynamic> message) {
@@ -231,6 +228,11 @@ class WebSocketService extends ChangeNotifier {
   }
 
   Future<void> connectToCurrentServer() async {
+    _sessionId ??= ApiService.extractSessionIdFromUrl();
+    if (_sessionId == null) {
+      debugPrint('No session ID found in URL, cannot connect');
+      return;
+    }
     await _fetchInitialData();
     final wsUrl = _buildWsUrl();
     connect(wsUrl);
@@ -238,7 +240,9 @@ class WebSocketService extends ChangeNotifier {
 
   Future<void> _fetchInitialData() async {
     try {
-      final data = await ApiService.getInitialData();
+      final sid = _sessionId ?? ApiService.extractSessionIdFromUrl();
+      if (sid == null) return;
+      final data = await ApiService.getInitialData(sid);
       if (data != null && !_disposed) {
         _summary = data['summary'] as String?;
         _projectDirectory = data['project_directory'] as String?;

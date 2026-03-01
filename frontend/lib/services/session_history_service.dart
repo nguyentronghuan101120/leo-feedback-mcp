@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 
 class SessionRecord {
+  final String entryId;
   final String sessionId;
   final String projectDirectory;
   final String summary;
@@ -11,6 +12,7 @@ class SessionRecord {
   int? completedAt;
 
   SessionRecord({
+    required this.entryId,
     required this.sessionId,
     required this.projectDirectory,
     required this.summary,
@@ -21,13 +23,16 @@ class SessionRecord {
   });
 
   factory SessionRecord.fromJson(Map<String, dynamic> json) {
+    final sid = json['session_id']?.toString() ?? '';
+    final created = _parseInt(json['created_at']);
     return SessionRecord(
-      sessionId: json['session_id']?.toString() ?? '',
+      entryId: json['entry_id']?.toString() ?? '${sid}_$created',
+      sessionId: sid,
       projectDirectory: json['project_directory']?.toString() ?? '',
       summary: json['summary']?.toString() ?? '',
       feedback: json['feedback']?.toString(),
       status: json['status']?.toString() ?? 'active',
-      createdAt: _parseInt(json['created_at']),
+      createdAt: created,
       completedAt: json['completed_at'] != null
           ? _parseInt(json['completed_at'])
           : null,
@@ -42,6 +47,7 @@ class SessionRecord {
   }
 
   Map<String, dynamic> toJson() => {
+        'entry_id': entryId,
         'session_id': sessionId,
         'project_directory': projectDirectory,
         'summary': summary,
@@ -88,22 +94,28 @@ class SessionHistoryService extends ChangeNotifier {
     notifyListeners();
   }
 
+  String? _latestEntryId;
+  String? get latestEntryId => _latestEntryId;
+
   void onNewSession({
     required String sessionId,
     required String projectDirectory,
     required String summary,
   }) {
-    final existing = _sessions.indexWhere((s) => s.sessionId == sessionId);
-    if (existing >= 0) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final entryId = '${sessionId}_$now';
+
+    _latestEntryId = entryId;
 
     _sessions.insert(
       0,
       SessionRecord(
+        entryId: entryId,
         sessionId: sessionId,
         projectDirectory: projectDirectory,
         summary: summary,
         status: 'active',
-        createdAt: DateTime.now().millisecondsSinceEpoch,
+        createdAt: now,
       ),
     );
     _trimSessions();
@@ -112,7 +124,9 @@ class SessionHistoryService extends ChangeNotifier {
   }
 
   void onFeedbackSubmitted(String sessionId, String feedback) {
-    final idx = _sessions.indexWhere((s) => s.sessionId == sessionId);
+    final idx = _sessions.indexWhere(
+      (s) => s.sessionId == sessionId && s.status == 'active',
+    );
     if (idx < 0) return;
 
     _sessions[idx].feedback = feedback;
@@ -147,8 +161,8 @@ class SessionHistoryService extends ChangeNotifier {
     }
   }
 
-  void removeSession(String sessionId) {
-    _sessions.removeWhere((s) => s.sessionId == sessionId);
+  void removeSession(String entryId) {
+    _sessions.removeWhere((s) => s.entryId == entryId);
     notifyListeners();
     _debouncedPersist();
   }

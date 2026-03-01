@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'services/api_service.dart';
 import 'services/websocket_service.dart';
 import 'services/auto_submit_service.dart';
 import 'services/notification_service.dart';
@@ -10,6 +11,7 @@ import 'screens/workspace_screen.dart';
 import 'screens/sessions_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/about_screen.dart';
+import 'screens/session_list_screen.dart';
 
 void main() {
   runApp(const FeedbackApp());
@@ -20,6 +22,17 @@ class FeedbackApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasSessionId = ApiService.extractSessionIdFromUrl() != null;
+
+    if (!hasSessionId) {
+      return MaterialApp(
+        title: 'Leo Feedback MCP',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.darkTheme,
+        home: const SessionListScreen(),
+      );
+    }
+
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(
