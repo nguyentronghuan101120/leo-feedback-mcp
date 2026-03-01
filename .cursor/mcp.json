@@ -15,6 +15,14 @@
       "command": "dart mcp-server --experimental-mcp-server --force-roots-fallback",
       "env": {},
       "args": []
+    },
+    "memory-keeper": {
+      "command": "npx",
+      "args": ["-y", "mcp-memory-keeper"],
+      "env": {
+        "TOOL_PROFILE": "full"
+      },
+      "timeout": 60
     }
   }
 }

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 import '../theme/app_theme.dart';
+import 'app_action_button.dart';
 
 class FeedbackPanel extends StatefulWidget {
   final bool feedbackSubmitted;
@@ -166,10 +167,20 @@ class FeedbackPanelState extends State<FeedbackPanel> {
 
     widget.onSubmit(FeedbackData(text: text, images: imageData));
 
+    _focusNode.unfocus();
+
     _controller.clear();
     setState(() {
       _images.clear();
       _hasContent = false;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_controller.text.isNotEmpty) {
+        _controller.clear();
+        setState(() => _hasContent = false);
+      }
     });
 
     _submitResetTimer?.cancel();
@@ -326,10 +337,12 @@ class FeedbackPanelState extends State<FeedbackPanel> {
                   children: [
                     _buildTextInput(context),
                     const SizedBox(height: 8),
-                    OutlinedButton.icon(
+                    AppActionButton(
+                      label: 'Copy User Content',
+                      icon: Icons.content_copy,
+                      confirmLabel: 'Copied',
+                      confirmIcon: Icons.check,
                       onPressed: _copyUserContent,
-                      icon: const Icon(Icons.content_copy, size: 14),
-                      label: const Text('Copy User Content'),
                     ),
                     const SizedBox(height: 12),
                     _buildImageUpload(context),
@@ -405,12 +418,15 @@ class FeedbackPanelState extends State<FeedbackPanel> {
   Widget _buildTextInput(BuildContext context) {
     final tt = Theme.of(context).textTheme;
 
-    return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.enter, control: true):
-            _handleSubmit,
-        const SingleActivator(LogicalKeyboardKey.enter, meta: true):
-            _handleSubmit,
+    return KeyboardListener(
+      focusNode: FocusNode(skipTraversal: true),
+      onKeyEvent: (event) {
+        if (event is KeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.enter &&
+            (HardwareKeyboard.instance.isControlPressed ||
+                HardwareKeyboard.instance.isMetaPressed)) {
+          _handleSubmit();
+        }
       },
       child: TextField(
         controller: _controller,

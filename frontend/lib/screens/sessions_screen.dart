@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:web/web.dart' as web;
 import '../services/websocket_service.dart';
 import '../services/session_history_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_action_button.dart';
+import '../widgets/markdown_content.dart';
 
 class SessionsScreen extends StatefulWidget {
   const SessionsScreen({super.key});
@@ -293,37 +293,16 @@ class _SessionsScreenState extends State<SessionsScreen> {
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: AppColors.bgTertiary,
               borderRadius: BorderRadius.circular(6),
               border: Border.all(color: AppColors.border),
             ),
-            child: MarkdownBody(
+            child: MarkdownContent(
               data: session.summary.isNotEmpty
                   ? session.summary
                   : '_No summary_',
-              onTapLink: (text, href, title) {
-                if (href != null && href.isNotEmpty) {
-                  web.window.open(href, '_blank');
-                }
-              },
-              styleSheet: MarkdownStyleSheet(
-                p: tt.bodySmall?.copyWith(color: AppColors.textPrimary),
-                h1: tt.titleMedium,
-                h2: tt.titleSmall,
-                h3: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                code: tt.bodySmall?.copyWith(
-                  fontFamily: 'monospace',
-                  color: AppColors.accent,
-                  backgroundColor: AppColors.surface,
-                ),
-                codeblockDecoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                listBullet: tt.bodySmall,
-              ),
+              padding: const EdgeInsets.all(10),
             ),
           ),
           if (session.feedback != null && session.feedback!.isNotEmpty) ...[
@@ -332,7 +311,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
             const SizedBox(height: 6),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: AppColors.success.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(6),
@@ -340,9 +318,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
                   color: AppColors.success.withValues(alpha: 0.3),
                 ),
               ),
-              child: Text(
-                session.feedback!,
-                style: tt.bodySmall?.copyWith(color: AppColors.textPrimary),
+              child: MarkdownContent(
+                data: session.feedback!,
+                padding: const EdgeInsets.all(10),
               ),
             ),
           ],
@@ -351,13 +329,19 @@ class _SessionsScreenState extends State<SessionsScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              OutlinedButton.icon(
+              AppActionButton(
+                label: 'Copy Summary',
+                icon: Icons.content_copy,
+                confirmLabel: 'Copied',
+                confirmIcon: Icons.check,
                 onPressed: () => _copyToClipboard(session.summary),
-                icon: const Icon(Icons.content_copy, size: 14),
-                label: const Text('Copy Summary'),
               ),
               if (!isCurrent)
-                OutlinedButton.icon(
+                AppActionButton(
+                  label: 'Remove',
+                  icon: Icons.delete_outline,
+                  color: AppColors.error,
+                  iconColor: AppColors.error,
                   onPressed: () {
                     context.read<SessionHistoryService>().removeSession(
                       session.sessionId,
@@ -366,15 +350,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
                       setState(() => _expandedSessionId = null);
                     }
                   },
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    size: 14,
-                    color: AppColors.error,
-                  ),
-                  label: Text(
-                    'Remove',
-                    style: tt.labelMedium?.copyWith(color: AppColors.error),
-                  ),
                 ),
             ],
           ),
