@@ -14,7 +14,7 @@ Features:
 - Audio & browser notifications
 """
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 __author__ = "Leo Nguyen"
 
 from .server import main as run_server

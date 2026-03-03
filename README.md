@@ -20,7 +20,7 @@ A customized MCP (Model Context Protocol) server for interactive feedback collec
 ```
 ┌─────────────────────────────────────────────┐
 │  Cursor / AI Client                         │
-│  (calls interactive_feedback MCP tool)      │
+│  (calls leo_feedback_mcp MCP tool)           │
 └──────────────┬──────────────────────────────┘
                │ MCP Protocol (stdio)
 ┌──────────────▼──────────────────────────────┐
@@ -68,7 +68,7 @@ MCP configuration (`.cursor/mcp.json`):
       "command": "uvx",
       "args": ["leo-feedback-mcp"],
       "timeout": 180,
-      "autoApprove": ["interactive_feedback", "leo-feedback-mcp"]
+      "autoApprove": ["leo_feedback_mcp"]
     }
   }
 }
@@ -97,7 +97,7 @@ MCP configuration (`.cursor/mcp.json`):
         "leo-feedback-mcp"
       ],
       "timeout": 180,
-      "autoApprove": ["interactive_feedback", "leo-feedback-mcp"]
+      "autoApprove": ["leo_feedback_mcp"]
     }
   }
 }
@@ -116,7 +116,7 @@ After editing, restart Cursor or reload MCP servers (Cursor Settings > MCP > Rel
 
 ## Usage
 
-Once configured, the AI assistant will automatically call `interactive_feedback` to collect your feedback during conversations. A Web UI will open in your browser where you can:
+Once configured, the AI assistant will automatically call `leo_feedback_mcp` to collect your feedback during conversations. A Web UI will open in your browser where you can:
 
 1. **Review** the AI's work summary (Markdown rendered)
 2. **Provide** text feedback with keyboard shortcuts

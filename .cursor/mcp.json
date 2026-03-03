@@ -8,7 +8,7 @@
       "command": "uv",
       "args": ["run", "--directory", "/Users/leonguyen/Desktop/leo-feedback-mcp", "leo-feedback-mcp"],
       "timeout": 180,
-      "autoApprove": ["interactive_feedback"]
+      "autoApprove": ["leo_feedback_mcp"]
     },
     "dart": {
       "type": "stdio",

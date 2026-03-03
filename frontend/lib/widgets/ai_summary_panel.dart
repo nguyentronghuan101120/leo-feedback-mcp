@@ -35,10 +35,10 @@ class AiSummaryPanel extends StatelessWidget {
 
     return Stack(
       children: [
-        Align(
-          alignment: Alignment.topLeft,
+        Positioned.fill(
           child: Scrollbar(
             child: SingleChildScrollView(
+              padding: const EdgeInsets.only(top: 4, right: 48),
               child: MarkdownContent(data: summary!),
             ),
           ),

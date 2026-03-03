@@ -226,22 +226,34 @@ class WebUIManager:
         return session_id
 
     def find_reusable_session(self) -> WebFeedbackSession | None:
-        """Find a completed session whose browser tab is still connected.
+        """Find a session that can be reused for a new MCP call.
 
-        Only reuses sessions that have already received feedback (completed).
-        Sessions still waiting for feedback belong to another conversation
-        and must not be overwritten.
+        Priority:
+        1. Completed session with connected browser (feedback submitted, tab open)
+        2. WAITING session with connected browser (MCP timed out, tab still open)
+        3. Recently active non-terminal session (within 10 min)
         """
         best = None
-        best_time = 0.0
+        best_score = -1
+
         for session in self.sessions.values():
-            if (
-                session.websocket is not None
-                and session.feedback_completed.is_set()
+            score = -1
+
+            if session.websocket is not None and session.feedback_completed.is_set():
+                score = 100 + session.last_activity
+            elif session.websocket is not None and session.status == SessionStatus.WAITING:
+                score = 90 + session.last_activity
+            elif (
+                not session.is_terminal()
+                and session.get_idle_time() < 600
+                and session.websocket is not None
             ):
-                if session.last_activity > best_time:
-                    best = session
-                    best_time = session.last_activity
+                score = 50 + session.last_activity
+
+            if score > best_score:
+                best = session
+                best_score = score
+
         return best
 
     def get_session(self, session_id: str) -> WebFeedbackSession | None:
@@ -529,6 +541,7 @@ async def launch_web_feedback_ui(
         session.status = SessionStatus.WAITING
         session.status_message = "Waiting for user feedback"
         session.last_activity = time.time()
+        session._cleanup_done = False
 
         if session.websocket:
             try:
@@ -559,10 +572,8 @@ async def launch_web_feedback_ui(
         return result
     except TimeoutError:
         raise
-    except Exception as e:
+    except Exception:
         raise
-    finally:
-        pass
 
 
 def stop_web_ui():
@@ -618,7 +629,7 @@ element.innerHTML = renderedContent;
 
             print("Received feedback result:")
             print(f"Command logs: {result.get('logs', '')}")
-            print(f"Interactive feedback: {result.get('interactive_feedback', '')}")
+            print(f"User feedback: {result.get('interactive_feedback', '')}")
             print(f"Images count: {len(result.get('images', []))}")
 
         except KeyboardInterrupt:

@@ -234,14 +234,21 @@ class WebFeedbackSession:
         ]
 
     def is_expired(self) -> bool:
-        """Check if session has expired."""
-        current_time = time.time()
+        """Check if session has expired.
 
-        idle_time = current_time - self.last_activity
-        if idle_time > self.max_idle_time:
+        WAITING sessions with a connected browser are never expired
+        (they are waiting for the next MCP call after a timeout).
+        """
+        if self.status == SessionStatus.EXPIRED:
             return True
 
-        if self.status == SessionStatus.EXPIRED:
+        if self.status == SessionStatus.WAITING and self.websocket is not None:
+            return False
+
+        current_time = time.time()
+        idle_time = current_time - self.last_activity
+
+        if idle_time > self.max_idle_time:
             return True
 
         if self.status in [SessionStatus.ERROR, SessionStatus.TIMEOUT]:
@@ -317,7 +324,10 @@ class WebFeedbackSession:
 
     async def wait_for_feedback(self, timeout: int = 600) -> dict[str, Any]:
         """
-        Wait for user feedback (including images), with timeout and auto cleanup.
+        Wait for user feedback (including images), with timeout.
+
+        On MCP timeout, the session is kept alive for reuse by the next call.
+        Only user-initiated timeouts trigger cleanup.
 
         Args:
             timeout: Timeout in seconds.
@@ -349,12 +359,16 @@ class WebFeedbackSession:
                     "images": self.images,
                     "settings": self.settings,
                 }
-            await self._cleanup_resources_on_timeout()
+
+            # MCP timeout: keep session alive for reuse, don't cleanup
+            self.last_activity = time.time()
             raise TimeoutError(
-                f"Wait for feedback timed out ({actual_timeout}s), interface auto-closed"
+                f"Wait for feedback timed out ({actual_timeout}s)"
             )
 
-        except Exception as e:
+        except TimeoutError:
+            raise
+        except Exception:
             await self._cleanup_resources_on_timeout()
             raise
 

@@ -85,8 +85,9 @@ def setup_routes(manager: "WebUIManager"):
                         "summary": session.summary,
                         "status": session.status.value,
                         "created_at": int(session.created_at * 1000),
+                        "last_activity": int(session.last_activity * 1000),
                     })
-            active.sort(key=lambda x: x["created_at"], reverse=True)
+            active.sort(key=lambda x: x["last_activity"], reverse=True)
             return JSONResponse(content={"sessions": active})
         except Exception as e:
             return JSONResponse(

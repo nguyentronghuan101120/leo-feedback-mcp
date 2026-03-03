@@ -120,9 +120,11 @@ class _SessionListScreenState extends State<SessionListScreen> {
     final sessionId = session['session_id'] as String? ?? '';
     final summary = session['summary'] as String? ?? 'No summary';
     final projectDir = session['project_directory'] as String? ?? '';
+    final lastActivity = session['last_activity'] as int? ?? 0;
     final createdAt = session['created_at'] as int? ?? 0;
-    final timeStr = createdAt > 0
-        ? _formatTime(DateTime.fromMillisecondsSinceEpoch(createdAt))
+    final displayTime = lastActivity > 0 ? lastActivity : createdAt;
+    final timeStr = displayTime > 0
+        ? _formatTime(DateTime.fromMillisecondsSinceEpoch(displayTime))
         : '';
 
     final title = _extractTitle(summary);

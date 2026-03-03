@@ -6,7 +6,7 @@ MCP tool definitions for interactive feedback collection.
 Supports Web UI, image processing, environment detection.
 
 MCP Tools:
-- interactive_feedback: Collect user feedback via Web UI
+- leo_feedback_mcp: Collect user feedback via Web UI
 - get_system_info: Get system environment info
 """
 
@@ -279,7 +279,7 @@ def process_images(images_data: list[dict]) -> list[MCPImage]:
 
 
 @mcp.tool()
-async def interactive_feedback(
+async def leo_feedback_mcp(
     project_directory: Annotated[str, Field(description="Project directory path")] = ".",
     summary: Annotated[
         str, Field(description="Summary of AI work completed")
