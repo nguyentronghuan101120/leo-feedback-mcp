@@ -1,14 +1,17 @@
 {
   "mcpServers": {
-    "sequential-thinking": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
-    },
     "leo-feedback-mcp": {
       "command": "uv",
-      "args": ["run", "--directory", "/Users/leonguyen/Desktop/leo-feedback-mcp", "leo-feedback-mcp"],
+      "args": [
+        "run",
+        "--directory",
+        "/Users/leonguyen/Desktop/leo-feedback-mcp",
+        "leo-feedback-mcp"
+      ],
       "timeout": 180,
-      "autoApprove": ["leo_feedback_mcp"]
+      "autoApprove": [
+        "leo_feedback_mcp"
+      ]
     },
     "dart": {
       "type": "stdio",
@@ -18,7 +21,10 @@
     },
     "memory-keeper": {
       "command": "npx",
-      "args": ["-y", "mcp-memory-keeper"],
+      "args": [
+        "-y",
+        "mcp-memory-keeper"
+      ],
       "env": {
         "TOOL_PROFILE": "full"
       },

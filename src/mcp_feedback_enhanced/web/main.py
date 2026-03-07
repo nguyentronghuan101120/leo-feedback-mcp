@@ -8,9 +8,7 @@ import sys
 import threading
 import time
 import uuid
-from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -26,7 +24,12 @@ from .utils.port_manager import PortManager
 
 
 class WebUIManager:
-    """Web UI manager with multi-session isolation support."""
+    """Web UI manager with single-session model.
+
+    Each server instance holds exactly one session. When a new MCP call
+    arrives while the current session is blocking (wait_for_feedback),
+    an overflow server is created on a different port.
+    """
 
     def __init__(self, host: str = "127.0.0.1", port: int | None = None):
         env_host = os.getenv("MCP_WEB_HOST")
@@ -47,8 +50,6 @@ class WebUIManager:
                     preferred_port = custom_port
             except ValueError:
                 pass
-        else:
-            pass
 
         auto_cleanup = os.environ.get("MCP_TEST_MODE", "").lower() != "true"
 
@@ -56,7 +57,6 @@ class WebUIManager:
             self.port = port
             if not PortManager.is_port_available(self.host, self.port):
                 if os.environ.get("MCP_TEST_MODE", "").lower() == "true":
-                    original_port = self.port
                     self.port = PortManager.find_free_port_enhanced(
                         preferred_port=self.port, auto_cleanup=False, host=self.host
                     )
@@ -75,20 +75,11 @@ class WebUIManager:
         self._setup_compression_middleware()
         self._setup_memory_monitoring()
 
-        self.sessions: dict[str, WebFeedbackSession] = {}
-
-        self.cleanup_stats: dict[str, Any] = {
-            "total_cleanups": 0,
-            "expired_cleanups": 0,
-            "memory_pressure_cleanups": 0,
-            "manual_cleanups": 0,
-            "last_cleanup_time": None,
-            "total_cleanup_duration": 0.0,
-            "sessions_cleaned": 0,
-        }
+        self.session: WebFeedbackSession | None = None
 
         self.server_thread: threading.Thread | None = None
         self.server_process = None
+        self._uvicorn_server: uvicorn.Server | None = None
 
         self._initialization_complete = False
         self._initialization_lock = threading.Lock()
@@ -172,27 +163,11 @@ class WebUIManager:
             self.memory_monitor = get_memory_monitor()
 
             def web_memory_alert(alert):
-                if alert.level == "critical":
-                    self.cleanup_expired_sessions()
-                elif alert.level == "emergency":
-                    self.cleanup_sessions_by_memory_pressure(force=True)
+                if alert.level in ("critical", "emergency"):
+                    if self.session and not self.is_blocking():
+                        self.cleanup_session(CleanupReason.MEMORY_PRESSURE)
 
             self.memory_monitor.add_alert_callback(web_memory_alert)
-
-            def session_cleanup_callback(force: bool = False):
-                try:
-                    if force:
-                        self.cleanup_sessions_by_memory_pressure(force=True)
-                    else:
-                        self.cleanup_expired_sessions()
-                except Exception as e:
-                    ErrorHandler.log_error_with_context(
-                        e,
-                        context={"operation": "memory_monitor_session_cleanup", "force": force},
-                        error_type=ErrorType.SYSTEM,
-                    )
-
-            self.memory_monitor.add_cleanup_callback(session_cleanup_callback)
 
             if not self.memory_monitor.is_monitoring:
                 self.memory_monitor.start_monitoring()
@@ -218,47 +193,16 @@ class WebUIManager:
         else:
             self.flutter_build_path = None
 
-    def create_session(self, project_directory: str, summary: str) -> str:
-        """Create new isolated feedback session. Each session is independent."""
+    def create_session(self, project_directory: str, summary: str) -> None:
+        """Create (or reset) the single session for this server."""
         session_id = str(uuid.uuid4())
-        session = WebFeedbackSession(session_id, project_directory, summary)
-        self.sessions[session_id] = session
-        return session_id
+        self.session = WebFeedbackSession(session_id, project_directory, summary)
 
-    def find_reusable_session(self) -> WebFeedbackSession | None:
-        """Find a session that can be reused for a new MCP call.
-
-        Priority:
-        1. Completed session with connected browser (feedback submitted, tab open)
-        2. WAITING session with connected browser (MCP timed out, tab still open)
-        3. Recently active non-terminal session (within 10 min)
-        """
-        best = None
-        best_score = -1
-
-        for session in self.sessions.values():
-            score = -1
-
-            if session.websocket is not None and session.feedback_completed.is_set():
-                score = 100 + session.last_activity
-            elif session.websocket is not None and session.status == SessionStatus.WAITING:
-                score = 90 + session.last_activity
-            elif (
-                not session.is_terminal()
-                and session.get_idle_time() < 600
-                and session.websocket is not None
-            ):
-                score = 50 + session.last_activity
-
-            if score > best_score:
-                best = session
-                best_score = score
-
-        return best
-
-    def get_session(self, session_id: str) -> WebFeedbackSession | None:
-        """Get session by ID."""
-        return self.sessions.get(session_id)
+    def is_blocking(self) -> bool:
+        """Check if the current session is blocking on wait_for_feedback."""
+        if self.session is None:
+            return False
+        return self.session._is_waiting
 
     def start_server(self):
         """Start Web server (supports parallel init)."""
@@ -303,6 +247,7 @@ class WebUIManager:
                     )
 
                     server_instance = uvicorn.Server(config)
+                    self._uvicorn_server = server_instance
 
                     async def serve_with_async_init(server=server_instance):
                         server_task = asyncio.create_task(server.serve())
@@ -362,145 +307,79 @@ class WebUIManager:
         """Get server URL."""
         return f"http://{self.host}:{self.port}"
 
-    def cleanup_expired_sessions(self) -> int:
-        """Clean up expired sessions."""
-        cleanup_start_time = time.time()
-        expired_sessions = []
-
-        for session_id, session in self.sessions.items():
-            if session.is_expired():
-                expired_sessions.append(session_id)
-
-        cleaned_count = 0
-        for session_id in expired_sessions:
-            try:
-                if session_id in self.sessions:
-                    session = self.sessions[session_id]
-                    session._cleanup_sync_enhanced(CleanupReason.EXPIRED)
-                    del self.sessions[session_id]
-                    cleaned_count += 1
-
-            except Exception as e:
-                ErrorHandler.log_error_with_context(
-                    e,
-                    context={"session_id": session_id, "operation": "cleanup_expired_sessions"},
-                    error_type=ErrorType.SYSTEM,
-                )
-
-        cleanup_duration = time.time() - cleanup_start_time
-        self.cleanup_stats.update(
-            {
-                "total_cleanups": self.cleanup_stats["total_cleanups"] + 1,
-                "expired_cleanups": self.cleanup_stats["expired_cleanups"] + 1,
-                "last_cleanup_time": datetime.now().isoformat(),
-                "total_cleanup_duration": self.cleanup_stats["total_cleanup_duration"]
-                + cleanup_duration,
-                "sessions_cleaned": self.cleanup_stats["sessions_cleaned"]
-                + cleaned_count,
-            }
-        )
-
-        return cleaned_count
-
-    def cleanup_sessions_by_memory_pressure(self, force: bool = False) -> int:
-        """Clean sessions under memory pressure."""
-        cleanup_start_time = time.time()
-        sessions_to_clean = []
-
-        for session_id, session in self.sessions.items():
-            if not force and session.is_active():
-                continue
-
-            if session.status in [
-                SessionStatus.COMPLETED,
-                SessionStatus.ERROR,
-                SessionStatus.TIMEOUT,
-            ]:
-                sessions_to_clean.append((session_id, session, 1))
-            elif session.status == SessionStatus.FEEDBACK_SUBMITTED:
-                if session.get_idle_time() > 300:
-                    sessions_to_clean.append((session_id, session, 2))
-            elif session.get_idle_time() > 600:
-                sessions_to_clean.append((session_id, session, 3))
-
-        sessions_to_clean.sort(key=lambda x: x[2])
-
-        max_cleanup = min(
-            len(sessions_to_clean), 5 if not force else len(sessions_to_clean)
-        )
-        cleaned_count = 0
-
-        for i in range(max_cleanup):
-            session_id, session, _ = sessions_to_clean[i]
-            try:
-                session._cleanup_sync_enhanced(CleanupReason.MEMORY_PRESSURE)
-                del self.sessions[session_id]
-                cleaned_count += 1
-
-            except Exception as e:
-                ErrorHandler.log_error_with_context(
-                    e,
-                    context={"session_id": session_id, "operation": "memory_pressure_cleanup"},
-                    error_type=ErrorType.SYSTEM,
-                )
-
-        cleanup_duration = time.time() - cleanup_start_time
-        self.cleanup_stats.update(
-            {
-                "total_cleanups": self.cleanup_stats["total_cleanups"] + 1,
-                "memory_pressure_cleanups": self.cleanup_stats[
-                    "memory_pressure_cleanups"
-                ]
-                + 1,
-                "last_cleanup_time": datetime.now().isoformat(),
-                "total_cleanup_duration": self.cleanup_stats["total_cleanup_duration"]
-                + cleanup_duration,
-                "sessions_cleaned": self.cleanup_stats["sessions_cleaned"]
-                + cleaned_count,
-            }
-        )
-
-        return cleaned_count
+    def cleanup_session(self, reason: CleanupReason = CleanupReason.MANUAL) -> None:
+        """Clean up the current session."""
+        if self.session is None:
+            return
+        try:
+            self.session._cleanup_sync_enhanced(reason)
+        except Exception as e:
+            ErrorHandler.log_error_with_context(
+                e,
+                context={"operation": "cleanup_session", "reason": reason.value},
+                error_type=ErrorType.SYSTEM,
+            )
+        self.session = None
 
     def stop(self):
-        """Stop Web UI service."""
-        cleanup_start_time = time.time()
-        session_count = len(self.sessions)
+        """Stop Web UI service and release the port."""
+        self.cleanup_session(CleanupReason.SHUTDOWN)
 
-        for session in list(self.sessions.values()):
-            try:
-                session._cleanup_sync_enhanced(CleanupReason.SHUTDOWN)
-            except Exception as e:
-                print(str(e), file=sys.stderr)
-
-        self.sessions.clear()
-
-        cleanup_duration = time.time() - cleanup_start_time
-        self.cleanup_stats.update(
-            {
-                "total_cleanups": self.cleanup_stats["total_cleanups"] + 1,
-                "manual_cleanups": self.cleanup_stats["manual_cleanups"] + 1,
-                "last_cleanup_time": datetime.now().isoformat(),
-                "total_cleanup_duration": self.cleanup_stats["total_cleanup_duration"]
-                + cleanup_duration,
-                "sessions_cleaned": self.cleanup_stats["sessions_cleaned"]
-                + session_count,
-            }
-        )
+        if self._uvicorn_server is not None:
+            self._uvicorn_server.should_exit = True
+            self._uvicorn_server = None
 
         if self.server_thread is not None and self.server_thread.is_alive():
-            pass
+            self.server_thread.join(timeout=5)
+            self.server_thread = None
 
 
-_web_ui_manager: WebUIManager | None = None
+_primary_manager: WebUIManager | None = None
+_overflow_managers: list[WebUIManager] = []
+_MAX_OVERFLOW = 3
 
 
-def get_web_ui_manager() -> WebUIManager:
-    """Get Web UI manager instance."""
-    global _web_ui_manager
-    if _web_ui_manager is None:
-        _web_ui_manager = WebUIManager()
-    return _web_ui_manager
+def _get_or_create_primary() -> WebUIManager:
+    """Get (or create) the primary server."""
+    global _primary_manager
+    if _primary_manager is None:
+        _primary_manager = WebUIManager()
+    return _primary_manager
+
+
+def _find_available_manager() -> WebUIManager:
+    """Find a server that is NOT blocking, or create an overflow.
+
+    Priority: primary first, then existing overflow servers.
+    If all are blocking, create a new overflow server (up to _MAX_OVERFLOW).
+    """
+    primary = _get_or_create_primary()
+
+    if not primary.is_blocking():
+        return primary
+
+    for mgr in _overflow_managers:
+        if not mgr.is_blocking():
+            return mgr
+
+    if len(_overflow_managers) < _MAX_OVERFLOW:
+        overflow = WebUIManager()
+        _overflow_managers.append(overflow)
+        return overflow
+
+    return primary
+
+
+def _cleanup_idle_overflows() -> None:
+    """Shutdown overflow servers that are idle (not blocking, no active session)."""
+    global _overflow_managers
+    still_active = []
+    for mgr in _overflow_managers:
+        if mgr.is_blocking():
+            still_active.append(mgr)
+        else:
+            mgr.stop()
+    _overflow_managers = still_active
 
 
 async def launch_web_feedback_ui(
@@ -510,11 +389,9 @@ async def launch_web_feedback_ui(
 ) -> dict:
     """Launch Web feedback UI and wait for user feedback.
 
-    Reuse logic:
-    - If a completed session with an open browser tab exists, reuse it
-      (same conversation calling again after feedback was submitted).
-    - If all existing sessions are still waiting, create a new session
-      (different conversation - must not overwrite).
+    Single-session model:
+    - If the server's session is idle (not blocking), reuse it.
+    - If blocking (concurrent chat), create overflow on a new port.
 
     Args:
         project_directory: Project directory path.
@@ -524,14 +401,14 @@ async def launch_web_feedback_ui(
     Returns:
         dict: Feedback result with logs, interactive_feedback, images.
     """
-    manager = get_web_ui_manager()
+    manager = _find_available_manager()
 
     if manager.server_thread is None or not manager.server_thread.is_alive():
         manager.start_server()
 
-    session = manager.find_reusable_session()
+    session = manager.session
 
-    if session:
+    if session is not None and not manager.is_blocking():
         session.summary = summary
         session.project_directory = project_directory
         session.feedback_result = None
@@ -557,15 +434,16 @@ async def launch_web_feedback_ui(
                 })
             except Exception:
                 pass
+        else:
+            manager.open_browser(manager.get_server_url())
     else:
-        session_id = manager.create_session(project_directory, summary)
-        session = manager.get_session(session_id)
+        manager.create_session(project_directory, summary)
+        session = manager.session
 
         if not session:
             raise RuntimeError("Failed to create feedback session")
 
-        feedback_url = f"{manager.get_server_url()}/session/{session_id}"
-        manager.open_browser(feedback_url)
+        manager.open_browser(manager.get_server_url())
 
     try:
         result = await session.wait_for_feedback(timeout)
@@ -577,11 +455,14 @@ async def launch_web_feedback_ui(
 
 
 def stop_web_ui():
-    """Stop Web UI service."""
-    global _web_ui_manager
-    if _web_ui_manager:
-        _web_ui_manager.stop()
-        _web_ui_manager = None
+    """Stop all servers (primary + overflows)."""
+    global _primary_manager, _overflow_managers
+    if _primary_manager:
+        _primary_manager.stop()
+        _primary_manager = None
+    for mgr in _overflow_managers:
+        mgr.stop()
+    _overflow_managers = []
 
 
 if __name__ == "__main__":

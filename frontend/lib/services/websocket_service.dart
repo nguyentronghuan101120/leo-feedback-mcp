@@ -31,6 +31,8 @@ class WebSocketService extends ChangeNotifier {
   bool get feedbackSubmitted => _feedbackSubmitted;
   int get sessionVersion => _sessionVersion;
 
+  bool get hasSession => _summary != null;
+
   VoidCallback? onSessionUpdated;
 
   final _commandOutputController = StreamController<String>.broadcast();
@@ -196,8 +198,7 @@ class WebSocketService extends ChangeNotifier {
   String _buildWsUrl() {
     final uri = Uri.base;
     final wsScheme = uri.scheme == 'https' ? 'wss' : 'ws';
-    final sid = _sessionId ?? ApiService.extractSessionIdFromUrl() ?? '';
-    return '$wsScheme://${uri.host}:${uri.port}/ws/$sid';
+    return '$wsScheme://${uri.host}:${uri.port}/ws';
   }
 
   void _sendMessage(Map<String, dynamic> message) {
@@ -228,11 +229,6 @@ class WebSocketService extends ChangeNotifier {
   }
 
   Future<void> connectToCurrentServer() async {
-    _sessionId ??= ApiService.extractSessionIdFromUrl();
-    if (_sessionId == null) {
-      debugPrint('No session ID found in URL, cannot connect');
-      return;
-    }
     await _fetchInitialData();
     final wsUrl = _buildWsUrl();
     connect(wsUrl);
@@ -240,9 +236,7 @@ class WebSocketService extends ChangeNotifier {
 
   Future<void> _fetchInitialData() async {
     try {
-      final sid = _sessionId ?? ApiService.extractSessionIdFromUrl();
-      if (sid == null) return;
-      final data = await ApiService.getInitialData(sid);
+      final data = await ApiService.getInitialData();
       if (data != null && !_disposed) {
         _summary = data['summary'] as String?;
         _projectDirectory = data['project_directory'] as String?;

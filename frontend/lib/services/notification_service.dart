@@ -80,18 +80,18 @@ class NotificationService {
         osc.connect(gain);
         gain.connect(ctx.destination);
 
-        osc.type = 'square';
+        osc.type = 'sine';
 
         final now = ctx.currentTime;
-        gain.gain.setValueAtTime(0.8, now);
+        gain.gain.setValueAtTime(0.5, now);
 
-        osc.frequency.setValueAtTime(880, now);
-        osc.frequency.setValueAtTime(660, now + 0.2);
-        gain.gain.setValueAtTime(0.8, now + 0.2);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+        osc.frequency.setValueAtTime(660, now);
+        osc.frequency.setValueAtTime(440, now + 0.15);
+        gain.gain.setValueAtTime(0.5, now + 0.15);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
 
         osc.start(now);
-        osc.stop(now + 0.5);
+        osc.stop(now + 0.4);
       }
 
       if (ctx.state == 'suspended') {
@@ -110,9 +110,16 @@ class NotificationService {
     try {
       if (web.Notification.permission != 'granted') return;
 
-      web.Notification(
+      final notif = web.Notification(
         'Leo Feedback MCP',
         web.NotificationOptions(body: 'New AI response is ready for your feedback.'),
+      );
+      notif.addEventListener(
+        'click',
+        ((web.Event e) {
+          web.window.focus();
+          notif.close();
+        }).toJS,
       );
     } catch (e) {
       debugPrint('Browser notification error: $e');

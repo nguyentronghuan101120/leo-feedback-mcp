@@ -61,7 +61,6 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           _lastSessionVersion = ws.sessionVersion;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            autoSubmit.onNewSession();
             if (ws.sessionId != null) {
               context.read<SessionHistoryService>().onNewSession(
                     sessionId: ws.sessionId!,

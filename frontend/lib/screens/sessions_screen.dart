@@ -65,13 +65,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               padding: EdgeInsets.zero,
             ),
-          IconButton(
-            onPressed: () => context.read<SessionHistoryService>().load(),
-            icon: const Icon(Icons.refresh, color: AppColors.textSecondary),
-            tooltip: 'Refresh',
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            padding: EdgeInsets.zero,
-          ),
         ],
       ),
     );
@@ -334,6 +327,14 @@ class _SessionsScreenState extends State<SessionsScreen> {
                 confirmIcon: Icons.check,
                 onPressed: () => _copyToClipboard(session.summary),
               ),
+              if (session.feedback != null && session.feedback!.isNotEmpty)
+                AppActionButton(
+                  label: 'Copy Feedback',
+                  icon: Icons.content_copy,
+                  confirmLabel: 'Copied',
+                  confirmIcon: Icons.check,
+                  onPressed: () => _copyToClipboard(session.feedback!),
+                ),
               if (!isCurrent)
                 AppActionButton(
                   label: 'Remove',

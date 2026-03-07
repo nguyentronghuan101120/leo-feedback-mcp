@@ -151,6 +151,8 @@ class WebFeedbackSession:
 
         self.active_tabs: dict[str, Any] = {}
 
+        self._is_waiting = False
+
         self.user_timeout_enabled = False
         self.user_timeout_seconds = 3600
         self.user_timeout_timer: threading.Timer | None = None
@@ -335,6 +337,7 @@ class WebFeedbackSession:
         Returns:
             Feedback result dict.
         """
+        self._is_waiting = True
         try:
             if timeout <= 30:
                 actual_timeout = max(timeout - 1, 5)
@@ -360,7 +363,6 @@ class WebFeedbackSession:
                     "settings": self.settings,
                 }
 
-            # MCP timeout: keep session alive for reuse, don't cleanup
             self.last_activity = time.time()
             raise TimeoutError(
                 f"Wait for feedback timed out ({actual_timeout}s)"
@@ -371,6 +373,8 @@ class WebFeedbackSession:
         except Exception:
             await self._cleanup_resources_on_timeout()
             raise
+        finally:
+            self._is_waiting = False
 
     async def submit_feedback(
         self,

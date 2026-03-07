@@ -10,10 +10,12 @@ MCP Tools:
 - get_system_info: Get system environment info
 """
 
+import atexit
 import base64
 import io
 import json
 import os
+import signal
 import sys
 from typing import Annotated, Any
 
@@ -402,8 +404,31 @@ def get_system_info() -> str:
     return json.dumps(system_info, ensure_ascii=False, indent=2)
 
 
+def _cleanup_on_exit():
+    """Ensure web UI servers are stopped and ports released on process exit."""
+    try:
+        from .web import stop_web_ui
+        stop_web_ui()
+    except Exception:
+        pass
+
+
+def _signal_handler(signum, frame):
+    """Handle termination signals to ensure graceful cleanup."""
+    _cleanup_on_exit()
+    sys.exit(0)
+
+
 def main():
     """Main entry point for package execution. Collects user feedback via Web UI."""
+    atexit.register(_cleanup_on_exit)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _signal_handler)
+        except (OSError, ValueError):
+            pass
+
     try:
         mcp.run()
     except KeyboardInterrupt:
