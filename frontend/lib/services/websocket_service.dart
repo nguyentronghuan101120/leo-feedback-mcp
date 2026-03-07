@@ -197,8 +197,9 @@ class WebSocketService extends ChangeNotifier {
 
   String _buildWsUrl() {
     final uri = Uri.base;
+    final port = ApiService.debugBackendPort ?? uri.port;
     final wsScheme = uri.scheme == 'https' ? 'wss' : 'ws';
-    return '$wsScheme://${uri.host}:${uri.port}/ws';
+    return '$wsScheme://${uri.host}:$port/ws';
   }
 
   void _sendMessage(Map<String, dynamic> message) {

@@ -91,6 +91,12 @@ class _AppActionButtonState extends State<AppActionButton> {
   }
 
   Widget _buildFloating(BuildContext context) {
+    final effectiveColor = widget.color;
+    final effectiveIconColor = widget.iconColor ?? effectiveColor;
+    final borderColor = _confirmed
+        ? AppColors.success
+        : effectiveColor ?? AppColors.border;
+
     return Material(
       color: Colors.transparent,
       child: AnimatedContainer(
@@ -100,9 +106,7 @@ class _AppActionButtonState extends State<AppActionButton> {
               ? AppColors.success.withValues(alpha: 0.9)
               : AppColors.bgTertiary.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: _confirmed ? AppColors.success : AppColors.border,
-          ),
+          border: Border.all(color: borderColor),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.2),
@@ -122,8 +126,9 @@ class _AppActionButtonState extends State<AppActionButton> {
                 Icon(
                   _effectiveIcon,
                   size: 14,
-                  color:
-                      _confirmed ? Colors.white : AppColors.textSecondary,
+                  color: _confirmed
+                      ? Colors.white
+                      : effectiveIconColor ?? AppColors.textSecondary,
                 ),
                 const SizedBox(width: 4),
                 Text(
@@ -131,7 +136,7 @@ class _AppActionButtonState extends State<AppActionButton> {
                   style: _baseTextStyle(context)?.copyWith(
                     color: _confirmed
                         ? Colors.white
-                        : AppColors.textSecondary,
+                        : effectiveColor ?? AppColors.textSecondary,
                   ),
                 ),
               ],

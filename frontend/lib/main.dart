@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'services/api_service.dart';
 import 'services/websocket_service.dart';
 import 'services/auto_submit_service.dart';
 import 'services/notification_service.dart';
@@ -12,6 +14,9 @@ import 'screens/settings_screen.dart';
 import 'screens/about_screen.dart';
 
 void main() {
+  if (kDebugMode) {
+    ApiService.debugBackendPort = 33333;
+  }
   runApp(const FeedbackApp());
 }
 

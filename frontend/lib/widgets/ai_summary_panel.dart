@@ -16,6 +16,7 @@ class AiSummaryPanel extends StatefulWidget {
 class _AiSummaryPanelState extends State<AiSummaryPanel> {
   bool _pinned = false;
   String? _pinnedSummary;
+  bool _hovered = false;
 
   String? get _displaySummary =>
       _pinned ? _pinnedSummary : widget.summary;
@@ -57,43 +58,56 @@ class _AiSummaryPanelState extends State<AiSummaryPanel> {
       );
     }
 
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: Scrollbar(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(top: 4, right: 80),
-              child: MarkdownContent(data: summary),
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Scrollbar(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(top: 4, right: 16),
+                child: MarkdownContent(data: summary),
+              ),
             ),
           ),
-        ),
-        Positioned(
-          top: 8,
-          right: 8,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppActionButton(
-                label: _pinned ? 'Unpin' : 'Pin',
-                icon: _pinned ? Icons.push_pin : Icons.push_pin_outlined,
-                variant: AppButtonVariant.floating,
-                onPressed: _togglePin,
+          Positioned(
+            top: 8,
+            right: 8,
+            child: AnimatedOpacity(
+              opacity: _hovered ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 150),
+              child: IgnorePointer(
+                ignoring: !_hovered,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AppActionButton(
+                      label: _pinned ? 'Unpin' : 'Pin',
+                      icon: _pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                      variant: AppButtonVariant.floating,
+                      color: _pinned ? AppColors.warning : null,
+                      iconColor: _pinned ? AppColors.warning : null,
+                      onPressed: _togglePin,
+                    ),
+                    const SizedBox(width: 4),
+                    AppActionButton(
+                      label: 'Copy',
+                      icon: Icons.content_copy,
+                      confirmLabel: 'Copied',
+                      confirmIcon: Icons.check,
+                      variant: AppButtonVariant.floating,
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: summary));
+                      },
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 4),
-              AppActionButton(
-                label: 'Copy',
-                icon: Icons.content_copy,
-                confirmLabel: 'Copied',
-                confirmIcon: Icons.check,
-                variant: AppButtonVariant.floating,
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: summary));
-                },
-              ),
-            ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

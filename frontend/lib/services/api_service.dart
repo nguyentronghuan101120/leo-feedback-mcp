@@ -4,9 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:web/web.dart' as web;
 
 class ApiService {
+  static int? debugBackendPort;
+
   static String get _baseUrl {
     final uri = Uri.base;
-    return '${uri.scheme}://${uri.host}:${uri.port}';
+    final port = debugBackendPort ?? uri.port;
+    return '${uri.scheme}://${uri.host}:$port';
   }
 
   static Future<Map<String, dynamic>?> getInitialData() async {
