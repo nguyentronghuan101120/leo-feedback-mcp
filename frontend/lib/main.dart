@@ -1,7 +1,7 @@
+import 'package:feedback_ui/services/api_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'services/api_service.dart';
 import 'services/websocket_service.dart';
 import 'services/auto_submit_service.dart';
 import 'services/notification_service.dart';
@@ -141,12 +141,19 @@ class _FeedbackHomeState extends State<FeedbackHome> {
                   Icon(
                     tab.icon,
                     size: 15,
-                    color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
+                    color: isSelected
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary,
                   ),
                   const SizedBox(width: 5),
                   Text(
                     tab.label,
-                    style: isSelected ? tt.labelMedium?.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w600) : tt.labelMedium,
+                    style: isSelected
+                        ? tt.labelMedium?.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          )
+                        : tt.labelMedium,
                   ),
                 ],
               ),

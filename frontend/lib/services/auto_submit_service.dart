@@ -13,6 +13,7 @@ class AutoSubmitService extends ChangeNotifier {
   Timer? _timer;
   bool _paused = false;
   bool _active = false;
+  Completer<void> _settingsLoaded = Completer<void>();
 
   DateTime? _targetTime;
 
@@ -33,10 +34,14 @@ class AutoSubmitService extends ChangeNotifier {
     _enabled = prefs.getBool('auto_submit_enabled') ?? false;
     _timeoutSeconds = prefs.getInt('auto_submit_timeout') ?? defaultTimeout;
     _prompt = prefs.getString('auto_submit_prompt');
+    if (!_settingsLoaded.isCompleted) {
+      _settingsLoaded.complete();
+    }
     notifyListeners();
   }
 
   Future<void> reload() async {
+    _settingsLoaded = Completer<void>();
     final wasActive = _active;
     await _loadSettings();
     if (wasActive && (!_enabled || _prompt == null || _prompt!.isEmpty)) {
@@ -44,7 +49,8 @@ class AutoSubmitService extends ChangeNotifier {
     }
   }
 
-  void onNewSession() {
+  Future<void> onNewSession() async {
+    await _settingsLoaded.future;
     if (!_enabled || _prompt == null || _prompt!.isEmpty) return;
     _targetTime = DateTime.now().add(Duration(seconds: _timeoutSeconds));
     _remaining = _timeoutSeconds;
