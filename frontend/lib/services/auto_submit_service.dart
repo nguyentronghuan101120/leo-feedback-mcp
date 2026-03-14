@@ -5,6 +5,8 @@ import 'package:web/web.dart' as web;
 
 class AutoSubmitService extends ChangeNotifier {
   static const defaultTimeout = 120;
+  static const defaultPrompt =
+      'continue call leo-feedback-mcp and wait me to confirm';
 
   bool _enabled = false;
   int _timeoutSeconds = defaultTimeout;
@@ -31,9 +33,9 @@ class AutoSubmitService extends ChangeNotifier {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _enabled = prefs.getBool('auto_submit_enabled') ?? false;
+    _enabled = prefs.getBool('auto_submit_enabled') ?? true;
     _timeoutSeconds = prefs.getInt('auto_submit_timeout') ?? defaultTimeout;
-    _prompt = prefs.getString('auto_submit_prompt');
+    _prompt = prefs.getString('auto_submit_prompt') ?? defaultPrompt;
     if (!_settingsLoaded.isCompleted) {
       _settingsLoaded.complete();
     }

@@ -41,12 +41,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
-      _autoSubmitEnabled = prefs.getBool('auto_submit_enabled') ?? false;
+      _autoSubmitEnabled = prefs.getBool('auto_submit_enabled') ?? true;
       _autoSubmitTimeout =
           prefs.getInt('auto_submit_timeout') ??
           AutoSubmitService.defaultTimeout;
-      _autoSubmitPrompt = prefs.getString('auto_submit_prompt');
-      _prompts = prefs.getStringList('prompts') ?? [];
+      _autoSubmitPrompt = prefs.getString('auto_submit_prompt') ??
+          AutoSubmitService.defaultPrompt;
+      _prompts = prefs.getStringList('prompts') ??
+          [AutoSubmitService.defaultPrompt];
       _timeoutController.text = _autoSubmitTimeout.toString();
     });
   }

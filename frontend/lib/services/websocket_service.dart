@@ -22,6 +22,7 @@ class WebSocketService extends ChangeNotifier {
   String? _serverVersion;
   bool _feedbackSubmitted = false;
   int _sessionVersion = 0;
+  String? _lastNotifiedSessionId;
 
   WsConnectionState get connectionState => _connectionState;
   String? get summary => _summary;
@@ -99,6 +100,7 @@ class WebSocketService extends ChangeNotifier {
             _sessionId = sessionInfo['session_id'] as String? ?? _sessionId;
             _feedbackSubmitted = false;
             _sessionVersion++;
+            _lastNotifiedSessionId = _sessionId;
             notifyListeners();
             onSessionUpdated?.call();
           }
@@ -107,14 +109,26 @@ class WebSocketService extends ChangeNotifier {
         case 'status_update':
           final statusInfo = message['status_info'] as Map<String, dynamic>?;
           if (statusInfo != null) {
+            final newSessionId =
+                statusInfo['session_id'] as String? ?? _sessionId;
+            final feedbackCompleted =
+                statusInfo['feedback_completed'] as bool? ?? false;
+
             _summary = statusInfo['summary'] as String? ?? _summary;
             _projectDirectory =
                 statusInfo['project_directory'] as String? ??
                 _projectDirectory;
-            _sessionId = statusInfo['session_id'] as String? ?? _sessionId;
-            _feedbackSubmitted =
-                statusInfo['feedback_completed'] as bool? ?? false;
+            _sessionId = newSessionId;
+            _feedbackSubmitted = feedbackCompleted;
             notifyListeners();
+
+            if (newSessionId != null &&
+                newSessionId != _lastNotifiedSessionId &&
+                !feedbackCompleted) {
+              _lastNotifiedSessionId = newSessionId;
+              _sessionVersion++;
+              onSessionUpdated?.call();
+            }
           }
           break;
 

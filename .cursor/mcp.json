@@ -1,34 +1,3 @@
 {
-  "mcpServers": {
-    "leo-feedback-mcp": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/Users/leonguyen/Desktop/leo-feedback-mcp",
-        "leo-feedback-mcp"
-      ],
-      "timeout": 180,
-      "autoApprove": [
-        "leo_feedback_mcp"
-      ]
-    },
-    "dart": {
-      "type": "stdio",
-      "command": "dart mcp-server --experimental-mcp-server --force-roots-fallback",
-      "env": {},
-      "args": []
-    },
-    "memory-keeper": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-memory-keeper"
-      ],
-      "env": {
-        "TOOL_PROFILE": "full"
-      },
-      "timeout": 60
-    }
-  }
+  "mcpServers": {}
 }
